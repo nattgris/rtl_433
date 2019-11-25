@@ -34,23 +34,34 @@ Temp, not 2's complement but a dedicated sign-bit, i.e. 1 bit sign, 11 bit temp.
 
 static int fineoffset_ws2032_decode(r_device *decoder, bitbuffer_t *bitbuffer)
 {
+    uint8_t const preamble[] = {0x0a}; // 8 bits, 0xf5 inverted
+
     data_t *data;
     uint8_t b[14];
 
-    // make sure we have a proper row
-    if (bitbuffer->num_rows != 1) {
-        return DECODE_ABORT_LENGTH;
+    bitbuffer_print(bitbuffer);
+
+    // find a proper row
+    int row = bitbuffer_find_repeated_row(bitbuffer, 2, 14 * 8); // expected: 3 rows of 113 bits
+    if (row < 0) {
+        return DECODE_ABORT_EARLY;
     }
-    if (bitbuffer->bits_per_row[0] < 14 * 8) {
+
+    unsigned offset = bitbuffer_search(bitbuffer, row, 0, preamble, 8);
+    if (offset + 14 * 8 > bitbuffer->bits_per_row[row]) {
         return DECODE_ABORT_LENGTH;
     }
 
     // invert and align the row
     bitbuffer_invert(bitbuffer);
-    bitbuffer_extract_bytes(bitbuffer, 0, 1, b, 14 * 8);
+    bitbuffer_extract_bytes(bitbuffer, row, offset, b, 14 * 8);
 
     // verify the checksums
-    if ((add_bytes(b, 12) & 0xff) != b[12]) {
+    int sum = add_bytes(b, 12);
+    if (sum == 0) {
+        return DECODE_FAIL_SANITY; // discard all zeros
+    }
+    if ((sum & 0xff) != b[12]) {
         return DECODE_FAIL_MIC; // sum mismatch
     }
     if (crc8(b, 14, 0x31, 0x00)) {
