@@ -217,6 +217,7 @@ Read the Test Data section at the bottom.
     [139]  Norgo NGE101
     [140]  Elantra2012 TPMS
     [141]  Auriol HG02832 temperature/humidity sensor
+    [142]  WS2032 weather station
 
 * Disabled by default, use -R n or -G
 
