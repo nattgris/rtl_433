@@ -48,6 +48,7 @@
 #include "term_ctl.h"
 #include "compat_paths.h"
 #include "fatal.h"
+#include "write_sigrok.h"
 
 #ifdef _WIN32
 #include <io.h>
@@ -98,9 +99,7 @@ static void usage(int exit_code)
             "       Specify a negative number to disable a device decoding protocol (can be used multiple times)\n"
             "  [-G] Enable blacklisted device decoding protocols, for testing only.\n"
             "  [-X <spec> | help] Add a general purpose decoder (prepend -R 0 to disable all decoders)\n"
-            "  [-l <level>] Change detection level used to determine pulses (0-16384) (0=auto) (default: %i)\n"
-            "  [-z <value>] Override short value in data decoder\n"
-            "  [-x <value>] Override long value in data decoder\n"
+            "  [-Y level=<dB level>] Manual detection level used to determine pulses (-1.0 to -30.0) (0=auto)\n"
             "  [-n <value>] Specify number of samples to take (each sample is 2 bytes: 1 each of I & Q)\n"
             "  [-Y auto | classic | minmax] FSK pulse detector mode.\n"
             "\t\t= Analyze/Debug options =\n"
@@ -125,7 +124,7 @@ static void usage(int exit_code)
             "  [-E hop | quit] Hop/Quit after outputting successful event(s)\n"
             "  [-h] Output this usage help and exit\n"
             "       Use -d, -g, -R, -X, -F, -M, -r, -w, or -W without argument for more help\n\n",
-            DEFAULT_FREQUENCY, DEFAULT_HOP_TIME, DEFAULT_SAMPLE_RATE, DEFAULT_LEVEL_LIMIT);
+            DEFAULT_FREQUENCY, DEFAULT_HOP_TIME, DEFAULT_SAMPLE_RATE);
     exit(exit_code);
 }
 
@@ -198,6 +197,8 @@ static void help_output(void)
             "\t  devices: posts device and sensor info in nested topics\n"
             "\tThe topic string will expand keys like [/model]\n"
             "\tE.g. -F \"mqtt://localhost:1883,user=USERNAME,pass=PASSWORD,retain=0,devices=rtl_433[/id]\"\n"
+            "\tWith MQTT each rtl_433 instance needs a distinct driver selection. The MQTT Client-ID is computed from the driver string.\n"
+            "\tIf you use multiple RTL-SDR, perhaps set a serial and select by that (helps not to get the wrong antenna).\n"
             "\tSpecify InfluxDB 2.0 server with e.g. -F \"influx://localhost:9999/api/v2/write?org=<org>&bucket=<bucket>,token=<authtoken>\"\n"
             "\tSpecify InfluxDB 1.x server with e.g. -F \"influx://localhost:8086/write?db=<db>&p=<password>&u=<user>\"\n"
             "\t  Additional parameter -M time:unix:usec:utc for correct timestamps in InfluxDB recommended\n"
@@ -209,13 +210,14 @@ static void help_meta(void)
 {
     term_help_printf(
             "\t\t= Meta information option =\n"
-            "  [-M time[:<options>]|protocol|level|stats|bits|newmodel] Add various metadata to every output line.\n"
+            "  [-M time[:<options>]|protocol|level|stats|bits|oldmodel] Add various metadata to every output line.\n"
             "\tUse \"time\" to add current date and time meta data (preset for live inputs).\n"
             "\tUse \"time:rel\" to add sample position meta data (preset for read-file and stdin).\n"
             "\tUse \"time:unix\" to show the seconds since unix epoch as time meta data.\n"
             "\tUse \"time:iso\" to show the time with ISO-8601 format (YYYY-MM-DD\"T\"hh:mm:ss).\n"
             "\tUse \"time:off\" to remove time meta data.\n"
             "\tUse \"time:usec\" to add microseconds to date time meta data.\n"
+            "\tUse \"time:tz\" to output time with timezone offset.\n"
             "\tUse \"time:utc\" to output time in UTC.\n"
             "\t\t(this may also be accomplished by invocation with TZ environment variable set).\n"
             "\t\t\"usec\" and \"utc\" can be combined with other options, eg. \"time:unix:utc:usec\".\n"
@@ -224,9 +226,7 @@ static void help_meta(void)
             "\tUse \"stats[:[<level>][:<interval>]]\" to report statistics (default: 600 seconds).\n"
             "\t  level 0: no report, 1: report successful devices, 2: report active devices, 3: report all\n"
             "\tUse \"bits\" to add bit representation to code outputs (for debug).\n"
-            "\nNote:"
-            "\tUse \"newmodel\" to transition to new model keys. This will become the default someday.\n"
-            "\tA table of changes and discussion is at https://github.com/merbanan/rtl_433/pull/986.\n\n");
+            "\tNote: You can use \"oldmodel\" to get the old model keys. This will be removed shortly.\n");
     exit(0);
 }
 
@@ -245,7 +245,9 @@ static void help_read(void)
             "\tParameters must be separated by non-alphanumeric chars and are case-insensitive.\n"
             "\tOverrides can be prefixed, separated by colon (':')\n\n"
             "\tE.g. default detection by extension: path/filename.am.s16\n"
-            "\tforced overrides: am:s16:path/filename.ext\n");
+            "\tforced overrides: am:s16:path/filename.ext\n\n"
+            "\tReading from pipes also support format options.\n"
+            "\tE.g reading complex 32-bit float: CU32:-\n");
     exit(0);
 }
 
@@ -314,9 +316,13 @@ static void sdr_callback(unsigned char *iq_buf, uint32_t len, void *ctx)
 
     // AM demodulation
     if (demod->sample_size == 1) { // CU8
-        envelope_detect(iq_buf, demod->buf.temp, n_samples);
-        //magnitude_true_cu8(iq_buf, demod->buf.temp, n_samples);
-        //magnitude_est_cu8(iq_buf, demod->buf.temp, n_samples);
+        if (demod->use_mag_est) {
+            //magnitude_true_cu8(iq_buf, demod->buf.temp, n_samples);
+            magnitude_est_cu8(iq_buf, demod->buf.temp, n_samples);
+        }
+        else { // amp est
+            envelope_detect(iq_buf, demod->buf.temp, n_samples);
+        }
     } else { // CS16
         //magnitude_true_cs16((int16_t *)iq_buf, demod->buf.temp, n_samples);
         magnitude_est_cs16((int16_t *)iq_buf, demod->buf.temp, n_samples);
@@ -362,7 +368,7 @@ static void sdr_callback(unsigned char *iq_buf, uint32_t len, void *ctx)
         }
         while (package_type) {
             int p_events = 0; // Sensor events successfully detected per package
-            package_type = pulse_detect_package(demod->pulse_detect, demod->am_buf, demod->buf.fm, n_samples, demod->level_limit, cfg->samp_rate, cfg->input_pos, &demod->pulse_data, &demod->fsk_pulse_data, fpdm);
+            package_type = pulse_detect_package(demod->pulse_detect, demod->am_buf, demod->buf.fm, n_samples, cfg->samp_rate, cfg->input_pos, &demod->pulse_data, &demod->fsk_pulse_data, fpdm);
             if (package_type) {
                 // new package: set a first frame start if we are not tracking one already
                 if (!demod->frame_start_ago)
@@ -460,7 +466,7 @@ static void sdr_callback(unsigned char *iq_buf, uint32_t len, void *ctx)
         if (dumper->format == CU8_IQ) {
             if (demod->sample_size == 2) {
                 for (unsigned long n = 0; n < n_samples * 2; ++n)
-                    ((uint8_t *)demod->buf.temp)[n] = (((int16_t *)iq_buf)[n] >> 8) + 128; // scale Q0.15 to Q0.7
+                    ((uint8_t *)demod->buf.temp)[n] = (((int16_t *)iq_buf)[n] / 256) + 128; // scale Q0.15 to Q0.7
                 out_buf = (uint8_t *)demod->buf.temp;
                 out_len = n_samples * 2 * sizeof(uint8_t);
             }
@@ -468,7 +474,7 @@ static void sdr_callback(unsigned char *iq_buf, uint32_t len, void *ctx)
         else if (dumper->format == CS16_IQ) {
             if (demod->sample_size == 1) {
                 for (unsigned long n = 0; n < n_samples * 2; ++n)
-                    ((int16_t *)demod->buf.temp)[n] = (iq_buf[n] << 8) - 32768; // scale Q0.7 to Q0.15
+                    ((int16_t *)demod->buf.temp)[n] = (iq_buf[n] * 256) - 32768; // scale Q0.7 to Q0.15
                 out_buf = (uint8_t *)demod->buf.temp; // this buffer is too small if out_block_size is large
                 out_len = n_samples * 2 * sizeof(int16_t);
             }
@@ -488,11 +494,11 @@ static void sdr_callback(unsigned char *iq_buf, uint32_t len, void *ctx)
         else if (dumper->format == CF32_IQ) {
             if (demod->sample_size == 1) {
                 for (unsigned long n = 0; n < n_samples * 2; ++n)
-                    ((float *)demod->buf.temp)[n] = (iq_buf[n] - 128) / 128.0;
+                    ((float *)demod->buf.temp)[n] = (iq_buf[n] - 128) / 128.0f;
             }
             else if (demod->sample_size == 2) {
                 for (unsigned long n = 0; n < n_samples * 2; ++n)
-                    ((float *)demod->buf.temp)[n] = ((int16_t *)iq_buf)[n] / 32768.0;
+                    ((float *)demod->buf.temp)[n] = ((int16_t *)iq_buf)[n] / 32768.0f;
             }
             out_buf = (uint8_t *)demod->buf.temp; // this buffer is too small if out_block_size is large
             out_len = n_samples * 2 * sizeof(float);
@@ -507,33 +513,33 @@ static void sdr_callback(unsigned char *iq_buf, uint32_t len, void *ctx)
         }
         else if (dumper->format == F32_AM) {
             for (unsigned long n = 0; n < n_samples; ++n)
-                demod->f32_buf[n] = demod->am_buf[n] * (1.0 / 0x8000); // scale from Q0.15
+                demod->f32_buf[n] = demod->am_buf[n] * (1.0f / 0x8000); // scale from Q0.15
             out_buf = (uint8_t *)demod->f32_buf;
             out_len = n_samples * sizeof(float);
         }
         else if (dumper->format == F32_FM) {
             for (unsigned long n = 0; n < n_samples; ++n)
-                demod->f32_buf[n] = demod->buf.fm[n] * (1.0 / 0x8000); // scale from Q0.15
+                demod->f32_buf[n] = demod->buf.fm[n] * (1.0f / 0x8000); // scale from Q0.15
             out_buf = (uint8_t *)demod->f32_buf;
             out_len = n_samples * sizeof(float);
         }
         else if (dumper->format == F32_I) {
             if (demod->sample_size == 1)
                 for (unsigned long n = 0; n < n_samples; ++n)
-                    demod->f32_buf[n] = (iq_buf[n * 2] - 128) * (1.0 / 0x80); // scale from Q0.7
+                    demod->f32_buf[n] = (iq_buf[n * 2] - 128) * (1.0f / 0x80); // scale from Q0.7
             else
                 for (unsigned long n = 0; n < n_samples; ++n)
-                    demod->f32_buf[n] = ((int16_t *)iq_buf)[n * 2] * (1.0 / 0x8000); // scale from Q0.15
+                    demod->f32_buf[n] = ((int16_t *)iq_buf)[n * 2] * (1.0f / 0x8000); // scale from Q0.15
             out_buf = (uint8_t *)demod->f32_buf;
             out_len = n_samples * sizeof(float);
         }
         else if (dumper->format == F32_Q) {
             if (demod->sample_size == 1)
                 for (unsigned long n = 0; n < n_samples; ++n)
-                    demod->f32_buf[n] = (iq_buf[n * 2 + 1] - 128) * (1.0 / 0x80); // scale from Q0.7
+                    demod->f32_buf[n] = (iq_buf[n * 2 + 1] - 128) * (1.0f / 0x80); // scale from Q0.7
             else
                 for (unsigned long n = 0; n < n_samples; ++n)
-                    demod->f32_buf[n] = ((int16_t *)iq_buf)[n * 2 + 1] * (1.0 / 0x8000); // scale from Q0.15
+                    demod->f32_buf[n] = ((int16_t *)iq_buf)[n * 2 + 1] * (1.0f / 0x8000); // scale from Q0.15
             out_buf = (uint8_t *)demod->f32_buf;
             out_len = n_samples * sizeof(float);
         }
@@ -607,7 +613,7 @@ static int hasopt(int test, int argc, char *argv[], char const *optstring)
 
 static void parse_conf_option(r_cfg_t *cfg, int opt, char *arg);
 
-#define OPTSTRING "hVvqDc:x:z:p:aAI:S:m:M:r:w:W:l:d:t:f:H:g:s:b:n:R:X:F:K:C:T:UGy:E:Y:"
+#define OPTSTRING "hVvqDc:x:z:p:a:AI:S:m:M:r:w:W:l:d:t:f:H:g:s:b:n:R:X:F:K:C:T:UG:y:E:Y:"
 
 // these should match the short options exactly
 static struct conf_keywords const conf_keywords[] = {
@@ -638,7 +644,7 @@ static struct conf_keywords const conf_keywords[] = {
         {"signal_grabber", 'S'},
         {"override_short", 'z'},
         {"override_long", 'x'},
-        {"fsk_pulse_detect_mode", 'Y'},
+        {"pulse_detect", 'Y'},
         {"output", 'F'},
         {"output_tag", 'K'},
         {"convert", 'C'},
@@ -739,8 +745,10 @@ static void parse_conf_option(r_cfg_t *cfg, int opt, char *arg)
         if (cfg->frequencies < MAX_FREQS) {
             uint32_t sr = atouint32_metric(arg, "-f: ");
             /* If the frequency is above 800MHz sample at 1MS/s */
-            if ((sr > FSK_PULSE_DETECTOR_LIMIT) && (cfg->samp_rate == DEFAULT_SAMPLE_RATE))
+            if ((sr > FSK_PULSE_DETECTOR_LIMIT) && (cfg->samp_rate == DEFAULT_SAMPLE_RATE)) {
                 cfg->samp_rate = 1000000;
+                fprintf(stderr, "\nNew defaults active, use \"-Y classic -s 250k\" for the old defaults!\n\n");
+            }
             cfg->frequency[cfg->frequencies++] = sr;
         } else
             fprintf(stderr, "Max number of frequencies reached %d\n", MAX_FREQS);
@@ -758,10 +766,14 @@ static void parse_conf_option(r_cfg_t *cfg, int opt, char *arg)
         cfg->gain_str = arg;
         break;
     case 'G':
-        if (atobv(arg, 1)) {
+        if (atobv(arg, 1) == 4) {
             fprintf(stderr, "\n\tUse -G for testing only. Enable protocols with -R if you really need them.\n\n");
             cfg->no_default_devices = 1;
             register_all_protocols(cfg, 1);
+        }
+        else {
+            fprintf(stderr, "\n\tUse -G for testing only. Enable with -G 4 if you really mean it.\n\n");
+            exit(1);
         }
         break;
     case 'p':
@@ -774,14 +786,23 @@ static void parse_conf_option(r_cfg_t *cfg, int opt, char *arg)
         cfg->out_block_size = atouint32_metric(arg, "-b: ");
         break;
     case 'l':
-        cfg->demod->level_limit = atouint32_metric(arg, "-l: ");
+        n = 1000;
+        if (arg && atoi(arg) > 0)
+            n = atoi(arg);
+        fprintf(stderr, "\n\tLevel limit has changed from \"-l %d\" to \"-Y level=%.1f\" in dB.\n\n", n, AMP_TO_DB(n));
+        exit(1);
         break;
     case 'n':
         cfg->bytes_to_read = atouint32_metric(arg, "-n: ") * 2;
         break;
     case 'a':
-        if (atobv(arg, 1) && !cfg->demod->am_analyze)
+        if (atobv(arg, 1) == 4 && !cfg->demod->am_analyze) {
             cfg->demod->am_analyze = am_analyze_create();
+        }
+        else {
+            fprintf(stderr, "\n\tUse -a for testing only. Enable with -a 4 if you really mean it.\n\n");
+            exit(1);
+        }
         break;
     case 'A':
         cfg->demod->analyze_pulses = atobv(arg, 1);
@@ -856,6 +877,10 @@ static void parse_conf_option(r_cfg_t *cfg, int opt, char *arg)
                     cfg->report_time_hires = 1;
                 else if (!strncasecmp(p, "sec", 3))
                     cfg->report_time_hires = 0;
+                else if (!strncasecmp(p, "tz", 2))
+                    cfg->report_time_tz = 1;
+                else if (!strncasecmp(p, "notz", 4))
+                    cfg->report_time_tz = 0;
                 else if (!strncasecmp(p, "utc", 3))
                     cfg->report_time_utc = 1;
                 else if (!strncasecmp(p, "local", 5))
@@ -893,9 +918,9 @@ static void parse_conf_option(r_cfg_t *cfg, int opt, char *arg)
         else if (!strcasecmp(arg, "description"))
             cfg->report_description = 1;
         else if (!strcasecmp(arg, "newmodel"))
-            cfg->new_model_keys = 1;
+            cfg->old_model_keys = 0;
         else if (!strcasecmp(arg, "oldmodel"))
-            cfg->new_model_keys = 0;
+            cfg->old_model_keys = 1;
         else if (!strncasecmp(arg, "stats", 5)) {
             // there also should be options to set wether to flush on report
             char *p = arg_param(arg);
@@ -911,16 +936,10 @@ static void parse_conf_option(r_cfg_t *cfg, int opt, char *arg)
         fprintf(stderr, "debug option (-D) is deprecated. See -v to increase verbosity\n");
         break;
     case 'z':
-        if (!arg)
-            usage(1);
-        if (cfg->demod->am_analyze)
-            cfg->demod->am_analyze->override_short = atoi(arg);
+        fprintf(stderr, "override_short (-z) is deprecated.\n");
         break;
     case 'x':
-        if (!arg)
-            usage(1);
-        if (cfg->demod->am_analyze)
-            cfg->demod->am_analyze->override_long = atoi(arg);
+        fprintf(stderr, "override_long (-x) is deprecated.\n");
         break;
     case 'R':
         if (!arg)
@@ -1029,18 +1048,29 @@ static void parse_conf_option(r_cfg_t *cfg, int opt, char *arg)
     case 'Y':
         if (!arg)
             usage(1);
-        if (strcmp(arg, "auto") == 0) {
-            cfg->fsk_pulse_detect_mode = FSK_PULSE_DETECT_AUTO;
-        }
-        else if (strcmp(arg, "classic") == 0) {
-            cfg->fsk_pulse_detect_mode = FSK_PULSE_DETECT_OLD;
-        }
-        else if (strcmp(arg, "minmax") == 0) {
-            cfg->fsk_pulse_detect_mode = FSK_PULSE_DETECT_NEW;
-        }
-        else {
-            fprintf(stderr, "Invalid FSK pulse detector mode: %s\n", arg);
-            usage(1);
+        char *p = arg;
+        while (p && *p) {
+            if (!strncmp(p, "auto", 4))
+                cfg->fsk_pulse_detect_mode = FSK_PULSE_DETECT_AUTO;
+            else if (!strncmp(p, "classic", 7))
+                cfg->fsk_pulse_detect_mode = FSK_PULSE_DETECT_OLD;
+            else if (!strncmp(p, "minmax", 6))
+                cfg->fsk_pulse_detect_mode = FSK_PULSE_DETECT_NEW;
+            else if (!strncmp(p, "ampest", 6))
+                cfg->demod->use_mag_est = 0;
+            else if (!strncmp(p, "magest", 6))
+                cfg->demod->use_mag_est = 1;
+            else if (!strncasecmp(p, "level", 5))
+                cfg->demod->level_limit = arg_float(p + 5, "-Y level: ");
+            else if (!strncasecmp(p, "minlevel", 8))
+                cfg->demod->min_level = arg_float(p + 8, "-Y minlevel: ");
+            else if (!strncasecmp(p, "minsnr", 6))
+                cfg->demod->min_snr = arg_float(p + 6, "-Y minsnr: ");
+            else {
+                fprintf(stderr, "Unknown pulse detector setting: %s\n", p);
+                usage(1);
+            }
+            p = arg_param(p);
         }
         break;
     case 'E':
@@ -1155,10 +1185,9 @@ int main(int argc, char **argv) {
     parse_conf_args(cfg, argc, argv);
 
     // warn if still using old model keys
-    if (!cfg->new_model_keys) {
+    if (cfg->old_model_keys) {
         fprintf(stderr,
-                "\n\tConsider using \"-M newmodel\" to transition to new model keys. This will become the default someday.\n"
-                "\tA table of changes and discussion is at https://github.com/merbanan/rtl_433/pull/986.\n\n");
+                "\n\tWarning: Using deprecated old model keys (\"-M oldmodel\"). This will be removed shortly.\n\n");
     }
 
     // add all remaining positional arguments as input files
@@ -1166,8 +1195,10 @@ int main(int argc, char **argv) {
         add_infile(cfg, argv[optind++]);
     }
 
+    pulse_detect_set_levels(demod->pulse_detect, demod->use_mag_est, demod->level_limit, demod->min_level, demod->min_snr);
+
     if (demod->am_analyze) {
-        demod->am_analyze->level_limit = &demod->level_limit;
+        demod->am_analyze->level_limit = DB_TO_AMP(demod->level_limit);
         demod->am_analyze->frequency   = &cfg->center_frequency;
         demod->am_analyze->samp_rate   = &cfg->samp_rate;
         demod->am_analyze->sample_size = &demod->sample_size;
@@ -1450,10 +1481,16 @@ int main(int argc, char **argv) {
                 fclose(in_file = stdin);
         }
 
+        close_dumpers(cfg);
         free(test_mode_buf);
         free(test_mode_float_buf);
         r_free_cfg(cfg);
         exit(0);
+    }
+
+    if (cfg->sr_filename) {
+        fprintf(stderr, "SR writing not recommended for live input\n");
+        exit(1);
     }
 
     // Normal case, no test data, no in files
@@ -1478,8 +1515,8 @@ int main(int argc, char **argv) {
     /* Set the sample rate */
     r = sdr_set_sample_rate(cfg->dev, cfg->samp_rate, 1); // always verbose
 
-    if (cfg->verbosity || demod->level_limit)
-        fprintf(stderr, "Bit detection level set to %d%s.\n", demod->level_limit, (demod->level_limit ? "" : " (Auto)"));
+    if (cfg->verbosity || demod->level_limit < 0.0)
+        fprintf(stderr, "Bit detection level set to %.1f%s.\n", demod->level_limit, (demod->level_limit < 0.0 ? "" : " (Auto)"));
 
     r = sdr_apply_settings(cfg->dev, cfg->settings_str, 1); // always verbose for soapy
 

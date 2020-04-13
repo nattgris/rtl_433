@@ -15,12 +15,6 @@
 #define DEFAULT_ASYNC_BUF_NUMBER    0 // Force use of default value (librtlsdr default: 15)
 #define DEFAULT_BUF_LENGTH      (16 * 32 * 512) // librtlsdr default
 #define FSK_PULSE_DETECTOR_LIMIT 800000000
-/*
- * Theoretical high level at I/Q saturation is 128x128 = 16384 (above is ripple)
- * 0 = automatic adaptive level limit, else fixed level limit
- * 8000 = previous fixed default
- */
-#define DEFAULT_LEVEL_LIMIT     0
 
 #define MINIMAL_BUF_LENGTH      512
 #define MAXIMAL_BUF_LENGTH      (256 * 16384)
@@ -81,6 +75,7 @@ typedef struct r_cfg {
     int report_protocol;
     time_mode_t report_time;
     int report_time_hires;
+    int report_time_tz;
     int report_time_utc;
     int report_description;
     int report_stats;
@@ -93,7 +88,9 @@ typedef struct r_cfg {
     char *output_tag;
     list_t output_handler;
     struct dm_state *demod;
-    int new_model_keys;
+    char const *sr_filename;
+    int sr_execopen;
+    int old_model_keys;
     /* stats*/
     unsigned frames_count; ///< stats counter for interval
     unsigned frames_fsk; ///< stats counter for interval

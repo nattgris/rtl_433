@@ -15,6 +15,7 @@ enum modulation_types {
     OOK_PULSE_PIWM_DC            = 11, ///< Level shift for each bit. Short interval = 1, Long = 0.
     OOK_PULSE_DMC                = 9,  ///< Level shift within the clock cycle.
     OOK_PULSE_PWM_OSV1           = 10, ///< Pulse Width Modulation. Oregon Scientific v1.
+    OOK_PULSE_NRZS               = 19, ///< NRZS modulation
     FSK_DEMOD_MIN_VAL            = 16, ///< Dummy. FSK demodulation must start at this value.
     FSK_PULSE_PCM                = 16, ///< FSK, Pulse Code Modulation.
     FSK_PULSE_PWM                = 17, ///< FSK, Pulse Width Modulation. Short pulses = 1, Long = 0.
@@ -56,7 +57,7 @@ typedef struct r_device {
     char **fields; ///< List of fields this decoder produces; required for CSV output. NULL-terminated.
 
     /* public for each decoder */
-    int new_model_keys; ///< TODO: temporary allow to change to new style model keys
+    int old_model_keys; ///< TODO: temporary allow to change to old style model keys
     int verbose;
     int verbose_bits;
     void (*output_fn)(struct r_device *decoder, struct data *data);

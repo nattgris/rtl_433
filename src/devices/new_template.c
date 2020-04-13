@@ -79,7 +79,7 @@ static int new_template_decode(r_device *decoder, bitbuffer_t *bitbuffer)
      * to determine if your limit settings are matched and firing
      * this decode callback.
      *
-     * 1. Enable with -D -D (debug level of 2)
+     * 1. Enable with -vvv (debug decoders)
      * 2. Delete this block when your decoder is working
      */
     //    if (decoder->verbose > 1) {
@@ -156,7 +156,19 @@ static int new_template_decode(r_device *decoder, bitbuffer_t *bitbuffer)
      */
 
     /*
+     * Several tools are available to reverse engineer a message integrity
+     * check:
+     *
+     * - reveng for CRC: http://reveng.sourceforge.net/
+     *   - Guide: https://hackaday.com/2019/06/27/reverse-engineering-cyclic-redundancy-codes/
+     * - revdgst: https://github.com/triq-org/revdgst/
+     * - trial and error, e.g. via online calculators:
+     *   - https://www.scadacore.com/tools/programming-calculators/online-checksum-calculator/
+     */
+
+    /*
      * Check message integrity (Parity example)
+     *
      */
     // parity check: odd parity on bits [0 .. 67]
     // i.e. 8 bytes and a nibble.
@@ -167,6 +179,7 @@ static int new_template_decode(r_device *decoder, bitbuffer_t *bitbuffer)
     parity = (parity >> 1) ^ (parity & 0x1); // fold to 1 bit
 
     if (!parity) {
+        //Enable with -vv (verbose decoders)
         if (decoder->verbose) {
             fprintf(stderr, "%s: parity check failed\n", __func__);
         }
@@ -177,6 +190,7 @@ static int new_template_decode(r_device *decoder, bitbuffer_t *bitbuffer)
      * Check message integrity (Checksum example)
      */
     if (((b[0] + b[1] + b[2] + b[3] - b[4]) & 0xFF) != 0) {
+        //Enable with -vv (verbose decoders)
         if (decoder->verbose) {
             fprintf(stderr, "%s: checksum error\n", __func__);
         }
@@ -191,7 +205,7 @@ static int new_template_decode(r_device *decoder, bitbuffer_t *bitbuffer)
     r_crc = b[7];
     c_crc = crc8(b, MYDEVICE_BITLEN / 8, MYDEVICE_CRC_POLY, MYDEVICE_CRC_INIT);
     if (r_crc != c_crc) {
-        // example debugging output
+        //Enable with -vv (verbose decoders)
         if (decoder->verbose) {
             fprintf(stderr, "%s: bad CRC: calculated %02x, received %02x\n",
                     __func__, c_crc, r_crc);
@@ -264,6 +278,10 @@ static char *output_fields[] = {
  * - r_device.h for the list of defined names
  *
  * This device is disabled and hidden, it can not be enabled.
+ *
+ * To enable your device, add it to the list in include/rtl_433_devices.h
+ * and to src/CMakeLists.txt and src/Makefile.am or run ./maintainer_update.py
+ *
  */
 r_device new_template = {
         .name        = "Template decoder",

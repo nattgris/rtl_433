@@ -146,7 +146,7 @@ static int flex_callback(r_device *decoder, bitbuffer_t *bitbuffer)
     // discard short / unwanted bitbuffers
     if ((bitbuffer->num_rows < params->min_rows)
             || (params->max_rows && bitbuffer->num_rows > params->max_rows))
-        return 0;
+        return DECODE_ABORT_LENGTH;
 
     for (i = 0; i < bitbuffer->num_rows; i++) {
         if ((bitbuffer->bits_per_row[i] >= params->min_bits)
@@ -154,13 +154,13 @@ static int flex_callback(r_device *decoder, bitbuffer_t *bitbuffer)
             match_count++;
     }
     if (!match_count)
-        return 0;
+        return DECODE_ABORT_LENGTH;
 
     // discard unless min_repeats, min_bits
     // TODO: check max_repeats, max_bits
     int r = bitbuffer_find_repeated_row(bitbuffer, params->min_repeats, params->min_bits);
     if (r < 0)
-        return 0;
+        return DECODE_ABORT_EARLY;
     // TODO: set match_count to count of repeated rows
 
     if (params->invert) {
@@ -188,7 +188,7 @@ static int flex_callback(r_device *decoder, bitbuffer_t *bitbuffer)
             }
         }
         if (!match_count)
-            return 0;
+            return DECODE_FAIL_SANITY;
     }
 
     // discard unless match, this should be an AND condition
@@ -202,6 +202,7 @@ static int flex_callback(r_device *decoder, bitbuffer_t *bitbuffer)
                     r = i;
                 match_count++;
                 pos += params->preamble_len;
+                // TODO: refactor to bitbuffer_shift_row()
                 unsigned len = bitbuffer->bits_per_row[i] - pos;
                 bitbuffer_extract_bytes(bitbuffer, i, pos, tmp, len);
                 memcpy(bitbuffer->bb[i], tmp, (len + 7) / 8);
@@ -209,7 +210,7 @@ static int flex_callback(r_device *decoder, bitbuffer_t *bitbuffer)
             }
         }
         if (!match_count)
-            return 0;
+            return DECODE_FAIL_SANITY;
     }
 
     if (decoder->verbose) {
@@ -235,7 +236,7 @@ static int flex_callback(r_device *decoder, bitbuffer_t *bitbuffer)
         render_getters(data, bitbuffer->bb[r], params);
 
         decoder_output_data(decoder, data);
-        return 0;
+        return 1;
     }
 
     if (params->count_only) {
@@ -247,7 +248,7 @@ static int flex_callback(r_device *decoder, bitbuffer_t *bitbuffer)
         /* clang-format on */
 
         decoder_output_data(decoder, data);
-        return 0;
+        return 1;
     }
 
     for (i = 0; i < bitbuffer->num_rows; i++) {
@@ -285,7 +286,7 @@ static int flex_callback(r_device *decoder, bitbuffer_t *bitbuffer)
         free(row_codes[i]);
     }
 
-    return 0;
+    return 1;
 }
 
 static char *output_fields[] = {
@@ -428,7 +429,7 @@ const char *parse_map(const char *arg, struct flex_get *getter)
 
         // then parse a string
         const char *e = c;
-        while (*e != ' ' && *e != ']') e++;
+        while (*e && *e != ' ' && *e != ']') e++;
         val = malloc(e - c + 1);
         if (!val)
             WARN_MALLOC("parse_map()");
@@ -694,7 +695,8 @@ r_device *flex_create_device(char *spec)
         usage();
     }
 
-    if (dev->modulation != OOK_PULSE_MANCHESTER_ZEROBIT) {
+    if (dev->modulation != OOK_PULSE_MANCHESTER_ZEROBIT
+            && dev->modulation != FSK_PULSE_MANCHESTER_ZEROBIT) {
         if (!dev->long_width) {
             fprintf(stderr, "Bad flex spec, missing long width!\n");
             usage();

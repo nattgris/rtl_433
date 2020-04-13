@@ -3,6 +3,7 @@
 
     Copyright (C) 2017 Tommy Vestermark
     Enhanced (C) 2019 Christian W. Zuckschwerdt <zany@triq.net>
+    Added WH51 Soil Moisture Sensor (C) 2019 Marco Di Leo
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -219,10 +220,15 @@ static int fineoffset_WH24_callback(r_device *decoder, bitbuffer_t *bitbuffer)
         }
         return DECODE_ABORT_LENGTH;
     }
+    // Classification heuristics
     if (bitbuffer->bits_per_row[0] - bit_offset - sizeof(b) * 8 < 8)
-        model = MODEL_WH24; // nominal 3 bits postamble
+        if (bit_offset < 61)
+            model = MODEL_WH24; // nominal 3 bits postamble
+        else
+            model = MODEL_WH65B;
     else
         model = MODEL_WH65B; // nominal 12 bits postamble
+
     bitbuffer_extract_bytes(bitbuffer, 0, bit_offset, b, sizeof(b) * 8);
 
     if (decoder->verbose) {
@@ -388,7 +394,7 @@ static int fineoffset_WH0290_callback(r_device *decoder, bitbuffer_t *bitbuffer)
             "id",               "ID",           DATA_INT,    id,
             "pm2_5_ug_m3",      "2.5um Fine Particulate Matter",  DATA_FORMAT, "%i ug/m3", DATA_INT, pm25/10,
             "pm10_0_ug_m3",     "10um Coarse Particulate Matter",  DATA_FORMAT, "%i ug/m3", DATA_INT, pm100/10,
-            "mic",              "Integrity",    DATA_STRING, "CHECKSUM",
+            "mic",              "Integrity",    DATA_STRING, "CRC",
             NULL);
     /* clang-format on */
 
@@ -420,7 +426,8 @@ Data layout:
 - B: 8 bit Bitsum (XOR) of the 6 data bytes (high and low nibble exchanged)
 
 WH32B is the same as WH25 but two packets in one transmission of {971} and XOR sum missing.
-TYPE:4h ID:8d FLAGS:2b TEMP_C:10d HUM:8d HPA:16d CHK:8h
+
+    TYPE:4h ID:8d FLAGS:2b TEMP_C:10d HUM:8d HPA:16d CHK:8h
 
 */
 static int fineoffset_WH25_callback(r_device *decoder, bitbuffer_t *bitbuffer)
@@ -495,13 +502,118 @@ static int fineoffset_WH25_callback(r_device *decoder, bitbuffer_t *bitbuffer)
             "temperature_C",    "Temperature",  DATA_FORMAT, "%.01f C", DATA_DOUBLE, temperature,
             "humidity",         "Humidity",     DATA_FORMAT, "%u %%", DATA_INT, humidity,
             "pressure_hPa",     "Pressure",     DATA_FORMAT, "%.01f hPa", DATA_DOUBLE, pressure,
-            "mic",              "Integrity",    DATA_STRING, "CHECKSUM",
+            "mic",              "Integrity",    DATA_STRING, "CRC",
             NULL);
     /* clang-format on */
 
     decoder_output_data(decoder, data);
     return 1;
 }
+
+/*
+Fine Offset WH51, ECOWITT WH51, MISOL/1 Soil Moisture Sensor
+
+Test decoding with: rtl_433 -f 433920000  -X "n=soil_sensor,m=FSK_PCM,s=58,l=58,t=5,r=5000,g=4000,preamble=aa2dd4"
+
+Data format:
+
+               00 01 02 03 04 05 06 07 08 09 10 11 12 13
+aa aa aa 2d d4 51 00 6b 58 6e 7f 24 f8 d2 ff ff ff 3c 28 8
+               FF II II II TB YY MM ZA AA XX XX XX CC SS
+
+Sync:     aa aa aa ...
+Preamble: 2d d4
+FF:       Family code 0x51 (ECOWITT/FineOffset WH51)
+IIIIII:   ID (3 bytes)
+T:        Transmission period boost: highest 3 bits set to 111 on moisture change and decremented each transmission;
+          if T = 0 period is 70 sec, if T > 0 period is 10 sec
+B:        Battery voltage: lowest 5 bits are battery voltage * 10 (e.g. 0x0c = 12 = 1.2V). Transmitter works down to 0.7V (0x07)
+YY:       ? Fixed: 0x7f
+MM:       Moisture percentage 0%-100% (0x00-0x64) MM = (AD - 70) / (450 - 70)
+Z:        ? Fixed: leftmost 7 bit 1111 100
+AAA:      9 bit AD value MSB byte[07] & 0x01, LSB byte[08]
+XXXXXX:   ? Fixed: 0xff 0xff 0xff
+CC:       CRC of the preceding 12 bytes (Polynomial 0x31, Initial value 0x00, Input not reflected, Result not reflected)
+SS:       Sum of the preceding 13 bytes % 256
+
+See http://www.ecowitt.com/upfile/201904/WH51%20Manual.pdf for relationship between AD and moisture %
+
+Short explanation:
+Soil Moisture Percentage = (Moisture AD – 0%AD) / (100%AD – 0%AD) * 100
+0%AD = 70
+100%AD = 450 (manual states 500, but sensor internal computation are closer to 450)
+If sensor-calculated moisture percentage are inaccurate at low/high values, use the AD value and the above formaula
+changing 0%AD and 100%AD to cover the full scale from dry to damp
+*/
+
+static int fineoffset_WH51_callback(r_device *decoder, bitbuffer_t *bitbuffer)
+{
+    data_t *data;
+    uint8_t const preamble[] = {0xAA, 0x2D, 0xD4};
+    uint8_t b[14];
+    unsigned bit_offset;
+
+    // Validate package
+    if (bitbuffer->bits_per_row[0] < 136) {  // Minimum length 14 bytes data + 3 bytes preamble
+        return DECODE_ABORT_LENGTH;
+    }
+
+    // Find a data package and extract data payload
+    bit_offset = bitbuffer_search(bitbuffer, 0, 0, preamble, sizeof(preamble) * 8) + sizeof(preamble) * 8;
+    if (bit_offset + sizeof(b) * 8 > bitbuffer->bits_per_row[0]) {  // Did not find a big enough package
+        if (decoder->verbose)
+            bitbuffer_printf(bitbuffer, "Fineoffset_WH51: short package. Header index: %u\n", bit_offset);
+        return DECODE_ABORT_LENGTH;
+    }
+    bitbuffer_extract_bytes(bitbuffer, 0, bit_offset, b, sizeof(b) * 8);
+
+    // Verify family code
+    if (b[0] != 0x51) {
+        if (decoder->verbose)
+            fprintf(stderr, "Fineoffset_WH51: Msg family unknown: %2x\n", b[0]);
+        return DECODE_ABORT_EARLY;
+    }
+
+    // Verify checksum
+    if ((add_bytes(b, 13) & 0xff) != b[13]) {
+        if (decoder->verbose)
+            bitrow_printf(b, sizeof (b) * 8, "Fineoffset_WH51: Checksum error: ");
+        return DECODE_FAIL_MIC;
+    }
+
+    // Verify crc
+    if (crc8(b, 12, 0x31, 0) != b[12]) {
+        if (decoder->verbose)
+            bitrow_printf(b, sizeof (b) * 8, "Fineoffset_WH51: Bitsum error: ");
+        return DECODE_FAIL_MIC;
+    }
+
+    // Decode data
+    char id[7];
+    sprintf(id, "%02x%02x%02x", b[1], b[2], b[3]);
+    int boost           = (b[4] & 0xe0) >> 5;
+    int battery_mv      = (b[4] & 0x1f) * 100;
+    float battery_level = (battery_mv - 700) / 900.0; // assume 1.6V (100%) to 0.7V (0%) range
+    int ad_raw          = (((int)b[7] & 0x01) << 8) | (int)b[8];
+    int moisture        = b[6];
+
+    /* clang-format off */
+    data = data_make(
+            "model",            "",                 DATA_STRING, "Fineoffset-WH51",
+            "id",               "ID",               DATA_STRING, id,
+            "battery_ok",       "Battery level",    DATA_DOUBLE, battery_level,
+            "battery_mV",       "Battery",          DATA_FORMAT, "%d mV", DATA_INT, battery_mv,
+            "moisture",         "Moisture",         DATA_FORMAT, "%u %%", DATA_INT, moisture,
+            "boost",            "Transmission boost", DATA_INT, boost,
+            "ad_raw",           "AD raw",           DATA_INT, ad_raw,
+            "mic",              "Integrity",        DATA_STRING, "CRC",
+            NULL);
+    /* clang-format on */
+
+    decoder_output_data(decoder, data);
+    return 1;
+}
+
 
 /**
 Alecto WS-1200 V1.0 decoder by Christian Zuckschwerdt, documentation by Andreas Untergasser, help by curlyel.
@@ -537,7 +649,7 @@ static int alecto_ws1200v1_callback(r_device *decoder, bitbuffer_t *bitbuffer)
     if (bitbuffer->bits_per_row[0] != 63 // Match exact length to avoid false positives
             || (bb[0][0] >> 1) != 0x7F   // Check preamble (7 bits)
             || (bb[0][1] >> 5) != 0x3)   // Check message type (4 bits)
-        return 0;
+        return DECODE_ABORT_LENGTH;
 
     bitbuffer_extract_bytes(bitbuffer, 0, 7, b, sizeof (b) * 8); // Skip first 7 bits
 
@@ -546,7 +658,7 @@ static int alecto_ws1200v1_callback(r_device *decoder, bitbuffer_t *bitbuffer)
     if (crc) {
         if (decoder->verbose)
             bitrow_printf(b, sizeof (b) * 8, "Alecto WS-1200 v1.0: CRC error ");
-        return 0;
+        return DECODE_FAIL_MIC;
     }
 
     int id            = ((b[0] & 0x0f) << 4) | (b[1] >> 4);
@@ -609,7 +721,7 @@ static int alecto_ws1200v2_dcf_callback(r_device *decoder, bitbuffer_t *bitbuffe
     if (bitbuffer->bits_per_row[0] != 95 // Match exact length to avoid false positives
             || (bb[0][0] >> 1) != 0x7F   // Check preamble (7 bits)
             || (bb[0][1] >> 1) != 0x52)   // Check message type (8 bits)
-        return 0;
+        return DECODE_ABORT_LENGTH;
 
     bitbuffer_extract_bytes(bitbuffer, 0, 7, b, sizeof (b) * 8); // Skip first 7 bits
 
@@ -618,14 +730,14 @@ static int alecto_ws1200v2_dcf_callback(r_device *decoder, bitbuffer_t *bitbuffe
     if (crc) {
         //if (decoder->verbose)
             bitrow_printf(b, sizeof (b) * 8, "Alecto WS-1200 v2.0 DCF77: CRC error ");
-        return 0;
+        return DECODE_FAIL_MIC;
     }
     // Verify checksum
     int sum = add_bytes(b, 10) - b[10];
     if (sum & 0xff) {
         if (decoder->verbose)
             bitrow_printf(b, sizeof (b) * 8, "Alecto WS-1200 v2.0 DCF77: Checksum error ");
-        return 0;
+        return DECODE_FAIL_MIC;
     }
 
     int id          = (b[1]);
@@ -701,14 +813,14 @@ static int alecto_ws1200v2_callback(r_device *decoder, bitbuffer_t *bitbuffer)
     if (crc) {
         if (decoder->verbose)
             bitrow_printf(b, sizeof (b) * 8, "Alecto WS-1200 v2.0: CRC error ");
-        return 0;
+        return DECODE_FAIL_MIC;
     }
     // Verify checksum
     int sum = add_bytes(b, 7) - b[7];
     if (sum & 0xff) {
         if (decoder->verbose)
             bitrow_printf(b, sizeof (b) * 8, "Alecto WS-1200 v2.0: Checksum error ");
-        return 0;
+        return DECODE_FAIL_MIC;
     }
 
     int id            = ((b[0] & 0x0f) << 4) | (b[1] >> 4);
@@ -841,6 +953,17 @@ static char *output_fields_WH25[] = {
     NULL,
 };
 
+static char *output_fields_WH51[] = {
+    "model",
+    "id",
+    "battery",
+    "moisture",
+    "boost",
+    "ad_raw",
+    "mic",
+    NULL,
+};
+
 static char *output_fields_WH0530[] = {
     "model",
     "id",
@@ -875,6 +998,17 @@ r_device fineoffset_WH25 = {
     .decode_fn      = &fineoffset_WH25_callback,
     .disabled       = 0,
     .fields         = output_fields_WH25,
+};
+
+r_device fineoffset_WH51 = {
+    .name           = "Fine Offset Electronics/ECOWITT WH51 Soil Moisture Sensor",
+    .modulation     = FSK_PULSE_PCM,
+    .short_width    = 58, // Bit width = 58µs (measured across 580 samples / 40 bits / 250 kHz )
+    .long_width     = 58, // NRZ encoding (bit width = pulse width)
+    .reset_limit    = 5000,
+    .decode_fn      = &fineoffset_WH51_callback,
+    .disabled       = 0,
+    .fields         = output_fields_WH51,
 };
 
 r_device fineoffset_WH0530 = {
