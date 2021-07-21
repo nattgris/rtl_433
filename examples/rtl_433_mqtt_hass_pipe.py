@@ -91,6 +91,16 @@ mappings = {
         }
     },
 
+    "abs_humidity": {
+        "device_type": "sensor",
+        "object_suffix": "AH",
+        "config": {
+            "name": "Absolute Humidity",
+            "unit_of_measurement": "g/m³",
+            "value_template": "{% set t = value_json.temperature_C | float %}{% set h = value_json.humidity | float %}{{ ((4.7815706 + 0.34597292 * t + 0.0099365776 * t**2 + 0.00015612096 * t**3 + 1.9830825E-6 * t**4 + 1.5773396E-8 * t**5) * h / 100) | round(2) }}"
+        }
+    },
+
     "moisture": {
         "device_type": "sensor",
         "object_suffix": "H",
@@ -296,6 +306,10 @@ def bridge_event_to_hass(mqttc, data):
     for key in data.keys():
         if key in mappings:
             publish_config(mqttc, topic, model, instance, mappings[key])
+
+    # configure calculated absolute humidity if both temp and RH is available
+    if 'temperature_C' in data.keys() and 'humidity' in data.keys():
+        publish_config(mqttc, topic, model, instance, mappings['abs_humidity'])
 
     mqttc.publish(topic, json.dumps(data))
 
