@@ -214,6 +214,30 @@ mappings = {
             "value_template": "{{ value_json.depth_cm }}"
         }
     },
+
+    # signal strength
+
+    "rssi": {
+        "device_type": "sensor",
+        "object_suffix": "RSSI",
+        "config": {
+            "device_class": "signal_strength",
+            "name": "RSSI",
+            "unit_of_measurement": "dBm",
+            "value_template": "{{ value_json.rssi }}"
+        }
+    },
+
+    "snr": {
+        "device_type": "sensor",
+        "object_suffix": "SNR",
+        "config": {
+            "device_class": "signal_strength",
+            "name": "SNR",
+            "unit_of_measurement": "dB",
+            "value_template": "{{ value_json.snr }}"
+        }
+    },
 }
 
 
