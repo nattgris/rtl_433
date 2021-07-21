@@ -280,12 +280,12 @@ def bridge_event_to_hass(mqttc, data):
         return
     model = sanitize(data["model"])
 
-    if "id" in data:
-        device_id = str(data["id"])
-        instance = device_id
-    elif "channel" in data:
+    if "channel" in data:
         channel = str(data["channel"])
         instance = channel
+    elif "id" in data:
+        device_id = str(data["id"])
+        instance = device_id
     if not instance:
         # no unique device identifier
         return
