@@ -34,8 +34,6 @@ def mqtt_disconnect(client, userdata, rc):
 
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
-# allow multiple sockets to use the same PORT number
-sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
 sock.bind((UDP_IP, UDP_PORT))
 
 
@@ -58,11 +56,8 @@ def publish_sensor_to_mqtt(mqttc, data, line):
     elif "id" in data:
         path += "/" + str(data["id"])
 
-    if "battery" in data:
-        if data["battery"] == "OK":
-            pass
-        else:
-            mqttc.publish(path + "/battery", str(data["battery"]))
+    if "battery_ok" in data:
+        mqttc.publish(path + "/battery", data["battery_ok"])
 
     if "humidity" in data:
         mqttc.publish(path + "/humidity", data["humidity"])

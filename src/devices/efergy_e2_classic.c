@@ -29,7 +29,8 @@ Power calculations come from Nathaniel Elijah's program EfergyRPI_001.
 
 #include "decoder.h"
 
-static int efergy_e2_classic_callback(r_device *decoder, bitbuffer_t *bitbuffer) {
+static int efergy_e2_classic_callback(r_device *decoder, bitbuffer_t *bitbuffer)
+{
     unsigned num_bits = bitbuffer->bits_per_row[0];
     uint8_t *bytes = bitbuffer->bb[0];
     data_t *data;
@@ -54,6 +55,7 @@ static int efergy_e2_classic_callback(r_device *decoder, bitbuffer_t *bitbuffer)
         }
     }
 
+
     // Sometimes pulses and gaps are mixed up. If this happens, invert
     // all bytes to get correct interpretation.
     if (bytes[0] & 0xf0) {
@@ -62,7 +64,17 @@ static int efergy_e2_classic_callback(r_device *decoder, bitbuffer_t *bitbuffer)
         }
     }
 
+    int zero_count = 0;
+    for (int i=0; i<8; i++) {
+        if (bytes[i] == 0)
+            zero_count++;
+    }
+    if (zero_count++ > 5)
+        return DECODE_FAIL_SANITY;  // too many Null bytes
+
+
     unsigned checksum = add_bytes(bytes, 7);
+
     if (checksum == 0) {
         return DECODE_FAIL_SANITY; // reduce false positives
     }
@@ -81,13 +93,13 @@ static int efergy_e2_classic_callback(r_device *decoder, bitbuffer_t *bitbuffer)
 
     /* clang-format off */
     data = data_make(
-            "model",    "",                 DATA_STRING, _X("Efergy-e2CT","Efergy e2 CT"),
-            "id",       "Transmitter ID",   DATA_INT,    address,
-            "battery",  "Battery",          DATA_STRING, battery ? "OK" : "LOW",
-            "current",  "Current",          DATA_FORMAT, "%.2f A", DATA_DOUBLE, current_adc,
-            "interval", "Interval",         DATA_FORMAT, "%ds", DATA_INT, interval,
-            "learn",    "Learning",         DATA_STRING, learn ? "YES" : "NO",
-            "mic",      "Integrity",        DATA_STRING, "CHECKSUM",
+            "model",        "",                 DATA_STRING, "Efergy-e2CT",
+            "id",           "Transmitter ID",   DATA_INT,    address,
+            "battery_ok",   "Battery",          DATA_INT,    !!battery,
+            "current",      "Current",          DATA_FORMAT, "%.2f A", DATA_DOUBLE, current_adc,
+            "interval",     "Interval",         DATA_FORMAT, "%ds", DATA_INT, interval,
+            "learn",        "Learning",         DATA_STRING, learn ? "YES" : "NO",
+            "mic",          "Integrity",        DATA_STRING, "CHECKSUM",
             NULL);
     /* clang-format on */
 
@@ -98,10 +110,11 @@ static int efergy_e2_classic_callback(r_device *decoder, bitbuffer_t *bitbuffer)
 static char *output_fields[] = {
         "model",
         "id",
-        "battery",
+        "battery_ok",
         "current",
         "interval",
         "learn",
+        "mic",
         NULL,
 };
 

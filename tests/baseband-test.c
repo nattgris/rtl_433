@@ -94,6 +94,12 @@ int main(int argc, char *argv[])
     filename = argv[1];
 
     cu8_buf  = malloc(sizeof(uint8_t) * 2 * max_block_size);
+    n_read = read_buf(filename, cu8_buf, sizeof(uint8_t) * 2 * max_block_size);
+    if (n_read < 1) {
+        free(cu8_buf);
+        return 1;
+    }
+
     y16_buf  = malloc(sizeof(uint16_t) * max_block_size);
     cs16_buf = malloc(sizeof(int16_t) * 2 * max_block_size);
     y32_buf  = malloc(sizeof(uint32_t) * max_block_size);
@@ -102,10 +108,6 @@ int main(int argc, char *argv[])
     s16_buf  = malloc(sizeof(int16_t) * max_block_size);
     s32_buf  = malloc(sizeof(int32_t) * max_block_size);
 
-    n_read = read_buf(filename, cu8_buf, sizeof(uint8_t) * 2 * max_block_size);
-    if (n_read < 1) {
-        return 1;
-    }
     n_samples = n_read / (sizeof(uint8_t) * 2);
 
     for (unsigned long i = 0; i < n_samples * 2; i++) {
@@ -133,7 +135,7 @@ int main(int argc, char *argv[])
     );
     write_buf("bb.lp.am.s16", u16_buf, sizeof(int16_t) * n_samples);
     MEASURE("baseband_demod_FM",
-        baseband_demod_FM(cu8_buf, s16_buf, n_samples, &fm_state, 0);
+        baseband_demod_FM(cu8_buf, s16_buf, n_samples, 250000, 0.1f, &fm_state);
     );
     write_buf("bb.fm.s16", s16_buf, sizeof(int16_t) * n_samples);
 
@@ -159,7 +161,7 @@ int main(int argc, char *argv[])
     //write_buf("bb.fm.s32", s32_buf, sizeof(int32_t) * n_samples);
 
     MEASURE("baseband_demod_FM_cs16",
-        baseband_demod_FM_cs16(cs16_buf, s16_buf, n_samples, &fm_state, 0);
+        baseband_demod_FM_cs16(cs16_buf, s16_buf, n_samples, 250000, 0.1f, &fm_state);
     );
     write_buf("bb.cs16.fm.s16", s16_buf, sizeof(int16_t) * n_samples);
 

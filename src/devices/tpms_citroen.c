@@ -12,6 +12,7 @@
 Citroen FSK 10 byte Manchester encoded checksummed TPMS data
 also Peugeot and likely Fiat, Mitsubishi, VDO-types.
 
+
 Packet nibbles:
 
     UU  IIIIIIII FR  PP TT BB  CC
@@ -31,7 +32,6 @@ Packet nibbles:
 static int tpms_citroen_decode(r_device *decoder, bitbuffer_t *bitbuffer, unsigned row, unsigned bitpos)
 {
     data_t *data;
-    unsigned int start_pos;
     bitbuffer_t packet_bits = {0};
     uint8_t *b;
     int state;
@@ -45,7 +45,13 @@ static int tpms_citroen_decode(r_device *decoder, bitbuffer_t *bitbuffer, unsign
     int maybe_battery;
     int crc;
 
-    start_pos = bitbuffer_manchester_decode(bitbuffer, row, bitpos, &packet_bits, 88);
+    bitbuffer_manchester_decode(bitbuffer, row, bitpos, &packet_bits, 88);
+
+    // fprintf(stderr, "%s : bits %d\n", __func__, packet_bits.bits_per_row[0]);
+    if ( packet_bits.bits_per_row[0] < 80) {
+        return DECODE_FAIL_SANITY; // sanity check failed
+    }
+
     b = packet_bits.bb[0];
 
     if (b[6] == 0 || b[7] == 0) {
@@ -67,19 +73,20 @@ static int tpms_citroen_decode(r_device *decoder, bitbuffer_t *bitbuffer, unsign
     temperature = b[7];
     maybe_battery = b[8];
 
+    /* clang-format off */
     data = data_make(
-        "model",        "",     DATA_STRING, "Citroen",
-        "type",         "",     DATA_STRING, "TPMS",
-        "state",        "",     DATA_STRING, state_str,
-        "id",           "",     DATA_STRING, id_str,
-        "flags",        "",     DATA_INT, flags,
-        "repeat",       "",     DATA_INT, repeat,
-        "pressure_kPa", "Pressure",    DATA_FORMAT, "%.0f kPa", DATA_DOUBLE, (double)pressure * 1.364,
-        "temperature_C", "Temperature", DATA_FORMAT, "%.0f C", DATA_DOUBLE, (double)temperature - 50.0,
-//        "battery_mV",   "Battery", DATA_INT, battery_mV,
-        "maybe_battery", "",     DATA_INT, maybe_battery,
-        "mic",          "",     DATA_STRING, "CHECKSUM",
-        NULL);
+            "model",            "",             DATA_STRING, "Citroen",
+            "type",             "",             DATA_STRING, "TPMS",
+            "id",               "",             DATA_STRING, id_str,
+            "state",            "",             DATA_STRING, state_str,
+            "flags",            "",             DATA_INT,    flags,
+            "repeat",           "",             DATA_INT,    repeat,
+            "pressure_kPa",     "Pressure",     DATA_FORMAT, "%.0f kPa", DATA_DOUBLE, (double)pressure * 1.364,
+            "temperature_C",    "Temperature",  DATA_FORMAT, "%.0f C", DATA_DOUBLE, (double)temperature - 50.0,
+            "maybe_battery",    "",             DATA_INT,    maybe_battery,
+            "mic",              "Integrity",    DATA_STRING, "CHECKSUM",
+            NULL);
+    /* clang-format on */
 
     decoder_output_data(decoder, data);
     return 1;
@@ -113,13 +120,12 @@ static int tpms_citroen_callback(r_device *decoder, bitbuffer_t *bitbuffer)
 static char *output_fields[] = {
     "model",
     "type",
-    "state",
     "id",
+    "state",
     "flags",
     "repeat",
     "pressure_kPa",
     "temperature_C",
-//    "battery_mV",
     "maybe_battery",
     "code",
     "mic",

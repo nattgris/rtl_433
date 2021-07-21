@@ -348,7 +348,7 @@ If you are developing or testing a decoder you can skip the device input or samp
 
 ### File names
 
-Samples recorded using the `-S` option will automaticly be given filenames with some meta-data.
+Samples recorded using the `-S` option will automatically be given filenames with some meta-data.
 The signals will be stored individually in files named `g<NNN>_<FFF>M_<RRR>k.cu8` :
 
 | Parameter | Description
@@ -496,7 +496,7 @@ Without any `-F` option the default is KV output. Use `-F null` to remove that d
 ### Meta information
 
 ```
-  [-M time[:<options>]|protocol|level|stats|bits|oldmodel]
+  [-M time[:<options>]|protocol|level|stats|bits]
     Add various metadata to every output line.
 ```
 - Use `time` to add current date and time meta data (preset for live inputs).

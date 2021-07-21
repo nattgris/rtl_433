@@ -1,25 +1,38 @@
+/** @file
+    Vaillant VRT 340f (calorMatic 340f) central heating control.
+
+    Copyright (C) 2017 Reinhold Kainhofer <reinhold@kainhofer.com>
+
+    This program is free software; you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation; either version 2 of the License, or
+    (at your option) any later version.
+*/
+/**
+Vaillant VRT 340f (calorMatic 340f) central heating control.
+
+    http://wiki.kainhofer.com/hardware/vaillantvrt340f
+
+The data is sent differential Manchester encoded
+with bit-stuffing (after five 1 bits an extra 0 bit is inserted)
+
+All bytes are sent with least significant bit FIRST (1000 0111 = 0xE1)
+
+ 0x00 00 7E | 6D F6 | 00 20 00 | 00 | 80 | B4 | 00 | FD 49 | FF 00
+   SYNC+HD. | DevID | CONST?   |Rep.|Wtr.|Htg.|Btr.|Checksm| EPILOGUE
+
+CONST? ... Unknown, but constant in all observed signals
+Rep.   ... Repeat indicator: 0x00=original signal, 0x01=first repeat
+Wtr.   ... pre-heated Water: 0x80=ON, 0x88=OFF (bit 8 is always set)
+Htg.   ... Heating: 0x00=OFF, 0xB4=ON (2-point), 0x01-0x7F=target heating water temp
+             (bit 8 indicates 2-point heating mode, bits 1-7 the heating water temp)
+Btr.   ... Battery: 0x00=OK, 0x01=LOW
+Checksm... Checksum (2-byte signed int): = -sum(bytes 4-12)
+
+*/
+
+
 #include "decoder.h"
-
-// Protocol of the Vaillant VRT 340f (calorMatic 340f) central heating control
-//     http://wiki.kainhofer.com/hardware/vaillantvrt340f
-// The data is sent differential Manchester encoded
-// with bit-stuffing (after five 1 bits an extra 0 bit is inserted)
-//
-// All bytes are sent with least significant bit FIRST (1000 0111 = 0xE1)
-//
-//  0x00 00 7E | 6D F6 | 00 20 00 | 00 | 80 | B4 | 00 | FD 49 | FF 00
-//    SYNC+HD. | DevID | CONST?   |Rep.|Wtr.|Htg.|Btr.|Checksm| EPILOGUE
-//
-// CONST? ... Unknown, but constant in all observed signals
-// Rep.   ... Repeat indicator: 0x00=original signal, 0x01=first repeat
-// Wtr.   ... pre-heated Water: 0x80=ON, 0x88=OFF (bit 8 is always set)
-// Htg.   ... Heating: 0x00=OFF, 0xB4=ON (2-point), 0x01-0x7F=target heating water temp
-//              (bit 8 indicates 2-point heating mode, bits 1-7 the heating water temp)
-// Btr.   ... Battery: 0x00=OK, 0x01=LOW
-// Checksm... Checksum (2-byte signed int): = -sum(bytes 4-12)
-
-// Copyright (C) 2017 Reinhold Kainhofer <reinhold@kainhofer.com>
-// License: GPL v2+ (or at your choice, any other OSI-approved Open Source license)
 
 static int16_t
 calculate_checksum(uint8_t *buff, int from, int to) {
@@ -151,14 +164,16 @@ vaillant_vrt340_callback(r_device *decoder, bitbuffer_t *bitbuffer)
         uint8_t water_preheated = get_water_preheated(bb[0]); // 1=Pre-heat, 0=no pre-heated water
         uint8_t isBatteryLow = get_battery_status(bb[0]);
 
+        /* clang-format off */
         data = data_make(
-                "model",   "", DATA_STRING, _X("Vaillant-VRT340f","Vaillant VRT340f Central Heating Thermostat"),
-                _X("id","device"),  "Device ID", DATA_FORMAT, "0x%04X", DATA_INT, deviceID,
-                "heating", "Heating Mode", DATA_STRING, (heating_mode==0)?"OFF":((heating_mode==1)?"ON (2-point)":"ON (analogue)"),
-                "heating_temp", "Heating Water Temp.", DATA_FORMAT, "%d", DATA_INT, (int16_t)target_temperature,
-                "water",   "Pre-heated Water", DATA_STRING, water_preheated ? "ON" : "off",
-                "battery", "Battery", DATA_STRING, isBatteryLow ? "Low" : "OK",
+                "model",        "",                     DATA_STRING, "Vaillant-VRT340f",
+                "id",           "Device ID",            DATA_FORMAT, "0x%04X", DATA_INT, deviceID,
+                "heating",      "Heating Mode",         DATA_STRING, (heating_mode==0)?"OFF":((heating_mode==1)?"ON (2-point)":"ON (analogue)"),
+                "heating_temp", "Heating Water Temp.",  DATA_FORMAT, "%d", DATA_INT, (int16_t)target_temperature,
+                "water",        "Pre-heated Water",     DATA_STRING, water_preheated ? "ON" : "off",
+                "battery_ok",      "Battery",              DATA_INT,    !isBatteryLow,
                 NULL);
+        /* clang-format on */
         decoder_output_data(decoder, data);
 
         return 1;
@@ -174,10 +189,12 @@ vaillant_vrt340_callback(r_device *decoder, bitbuffer_t *bitbuffer)
         // Device ID starts at bit 12:
         uint16_t deviceID = get_device_id(bb[0], 11);
 
+        /* clang-format off */
         data = data_make(
-                "model",   "", DATA_STRING, _X("Vaillant-VRT340f","Vaillant VRT340f Central Heating Thermostat (RF Detection)"),
-                _X("id","device"),  "Device ID", DATA_INT, deviceID,
+                "model",    "",             DATA_STRING, "Vaillant-VRT340f",
+                "id",       "Device ID",    DATA_INT, deviceID,
                 NULL);
+        /* clang-format on */
         decoder_output_data(decoder, data);
 
         return 1;
@@ -187,24 +204,23 @@ vaillant_vrt340_callback(r_device *decoder, bitbuffer_t *bitbuffer)
 }
 
 static char *output_fields[] = {
-    "model",
-    "device", // TODO: delete this
-    "id",
-    "heating",
-    "heating_temp",
-    "water",
-    "battery",
-    NULL
+        "model",
+        "id",
+        "heating",
+        "heating_temp",
+        "water",
+        "battery_ok",
+        NULL,
 };
 
 r_device vaillant_vrt340f = {
-    .name           = "Vaillant calorMatic VRT340f Central Heating Control",
-    .modulation     = OOK_PULSE_DMC,
-    .short_width    = 836,  // half-bit width 836 us
-    .long_width     = 1648, // bit width 1648 us
-    .reset_limit    = 4000,
-    .tolerance      = 120, // us
-    .decode_fn      = &vaillant_vrt340_callback,
-    .disabled       = 0,
-    .fields         = output_fields
+        .name        = "Vaillant calorMatic VRT340f Central Heating Control",
+        .modulation  = OOK_PULSE_DMC,
+        .short_width = 836,  // half-bit width 836 us
+        .long_width  = 1648, // bit width 1648 us
+        .reset_limit = 4000,
+        .tolerance   = 120, // us
+        .decode_fn   = &vaillant_vrt340_callback,
+        .disabled    = 0,
+        .fields      = output_fields,
 };

@@ -3,6 +3,7 @@
 rtl_433 (despite the name) is a generic data receiver, mainly for the 433.92 MHz, 868 MHz (SRD), 315 MHz, 345 MHz, and 915 MHz ISM bands.
 
 The official source code is in the https://github.com/merbanan/rtl_433/ repository.
+For more documentation and related projects see the https://triq.org/ site.
 
 It works with [RTL-SDR](https://github.com/osmocom/rtl-sdr/) and/or [SoapySDR](https://github.com/pothosware/SoapySDR/).
 Actively tested and supported are Realtek RTL2832 based DVB dongles (using RTL-SDR) and LimeSDR ([LimeSDR USB](https://www.crowdsupply.com/lime-micro/limesdr) and [LimeSDR mini](https://www.crowdsupply.com/lime-micro/limesdr-mini) engineering samples kindly provided by [MyriadRf](https://myriadrf.org/)), PlutoSDR, HackRF One (using SoapySDR drivers), as well as SoapyRemote.
@@ -18,9 +19,13 @@ Systems with 32-bit i686 and 64-bit x86-64 as well as (embedded) ARM, like the R
 
 See [BUILDING.md](docs/BUILDING.md)
 
-Official [binary builds for Windows](https://bintray.com/chzu/dist/rtl_433) (32 and 64 bit) are available at Bintray.
-
 On Debian (sid) or Ubuntu (19.10+), `apt-get install rtl-433` for other distros check https://repology.org/project/rtl-433/versions
+
+On FreeBSD, `pkg install rtl-433`.
+
+On MacOS, `brew install rtl_433`.
+
+Docker images with rtl_433 are available [on the github page of hertzg](https://github.com/hertzg/rtl_433_docker).
 
 ## How to add support for unsupported sensors
 
@@ -51,11 +56,13 @@ See [CONTRIBUTING.md](./docs/CONTRIBUTING.md).
        Specify a negative number to disable a device decoding protocol (can be used multiple times)
   [-G] Enable blacklisted device decoding protocols, for testing only.
   [-X <spec> | help] Add a general purpose decoder (prepend -R 0 to disable all decoders)
-  [-l <level>] Change detection level used to determine pulses (0-16384) (0=auto) (default: 0)
-  [-z <value>] Override short value in data decoder
-  [-x <value>] Override long value in data decoder
-  [-n <value>] Specify number of samples to take (each sample is 2 bytes: 1 each of I & Q)
   [-Y auto | classic | minmax] FSK pulse detector mode.
+  [-Y level=<dB level>] Manual detection level used to determine pulses (-1.0 to -30.0) (0=auto).
+  [-Y minlevel=<dB level>] Manual minimum detection level used to determine pulses (-1.0 to -99.0).
+  [-Y minsnr=<dB level>] Minimum SNR to determine pulses (1.0 to 99.0).
+  [-Y autolevel] Set minlevel automatically based on average estimated noise.
+  [-Y squelch] Skip frames below estimated noise level to reduce cpu load.
+  [-Y ampest | magest] Choose amplitude or magnitude level estimator.
 		= Analyze/Debug options =
   [-a] Analyze mode. Print a textual description of the signal.
   [-A] Pulse Analyzer. Enable pulse analysis and decode attempt.
@@ -71,9 +78,10 @@ See [CONTRIBUTING.md](./docs/CONTRIBUTING.md).
   [-F kv | json | csv | mqtt | influx | syslog | null | help] Produce decoded output in given format.
        Append output to file with :<filename> (e.g. -F csv:log.csv), defaults to stdout.
        Specify host/port for syslog with e.g. -F syslog:127.0.0.1:1514
-  [-M time[:<options>] | protocol | level | stats | bits | help] Add various meta data to each output.
-  [-K FILE | PATH | <tag>] Add an expanded token or fixed tag to every output line.
+  [-M time[:<options>] | protocol | level | noise[:secs] | stats | bits | help] Add various meta data to each output.
+  [-K FILE | PATH | <tag> | <key>=<tag>] Add an expanded token or fixed tag to every output line.
   [-C native | si | customary] Convert units in decoded output.
+  [-n <value>] Specify number of samples to take (each sample is an I/Q pair)
   [-T <seconds>] Specify number of seconds to run, also 12:34 or 1h23m45s
   [-E hop | quit] Hop/Quit after outputting successful event(s)
   [-h] Output this usage help and exit
@@ -98,10 +106,10 @@ See [CONTRIBUTING.md](./docs/CONTRIBUTING.md).
     [16]  AlectoV1 Weather Sensor (Alecto WS3500 WS4500 Ventus W155/W044 Oregon)
     [17]  Cardin S466-TX2
     [18]  Fine Offset Electronics, WH2, WH5, Telldus Temperature/Humidity/Rain Sensor
-    [19]  Nexus, FreeTec NC-7345, NX-3980 temperature/humidity sensor
-    [20]  Ambient Weather Temperature Sensor
+    [19]  Nexus, FreeTec NC-7345, NX-3980, Solight TE82S, TFA 30.3209 temperature/humidity sensor
+    [20]  Ambient Weather, TFA 30.3208.02 temperature sensor
     [21]  Calibeur RF-104 Sensor
-    [22]* X10 RF
+    [22]  X10 RF
     [23]  DSC Security Contact
     [24]* Brennenstuhl RCS 2044
     [25]  Globaltronics GT-WT-02 Sensor
@@ -117,7 +125,7 @@ See [CONTRIBUTING.md](./docs/CONTRIBUTING.md).
     [37]* Inovalley kw9015b, TFA Dostmann 30.3161 (Rain and temperature sensor)
     [38]  Generic temperature sensor 1
     [39]  WG-PB12V1 Temperature Sensor
-    [40]  Acurite 592TXR Temp/Humidity, 5n1 Weather Station, 6045 Lightning
+    [40]  Acurite 592TXR Temp/Humidity, 5n1 Weather Station, 6045 Lightning, 3N1, Atlas
     [41]  Acurite 986 Refrigerator / Freezer Thermometer
     [42]  HIDEKI TS04 Temperature, Humidity, Wind and Rain Sensor
     [43]  Watchman Sonic / Apollo Ultrasonic / Beckett Rocket oil tank monitor
@@ -151,7 +159,7 @@ See [CONTRIBUTING.md](./docs/CONTRIBUTING.md).
     [73]  LaCrosse TX141-Bv2, TX141TH-Bv2, TX141-Bv3, TX141W, TX145wsdth sensor
     [74]  Acurite 00275rm,00276rm Temp/Humidity with optional probe
     [75]  LaCrosse TX35DTH-IT, TFA Dostmann 30.3155 Temperature/Humidity sensor
-    [76]  LaCrosse TX29IT Temperature sensor
+    [76]  LaCrosse TX29IT, TFA Dostmann 30.3159.IT Temperature sensor
     [77]  Vaillant calorMatic VRT340f Central Heating Control
     [78]  Fine Offset Electronics, WH25, WH32B, WH24, WH65B, HP1000 Temperature/Humidity/Pressure Sensor
     [79]  Fine Offset Electronics, WH0530 Temperature/Rain Sensor
@@ -166,7 +174,7 @@ See [CONTRIBUTING.md](./docs/CONTRIBUTING.md).
     [88]  Toyota TPMS
     [89]  Ford TPMS
     [90]  Renault TPMS
-    [91]  inFactory, FreeTec NC-3982-913 temperature humidity sensor
+    [91]  inFactory, nor-tec, FreeTec NC-3982-913 temperature humidity sensor
     [92]  FT-004-B Temperature Sensor
     [93]  Ford Car Key
     [94]  Philips outdoor temperature sensor (type AJ3650)
@@ -205,7 +213,7 @@ See [CONTRIBUTING.md](./docs/CONTRIBUTING.md).
     [127]  Ecowitt Wireless Outdoor Thermometer WH53/WH0280/WH0281A
     [128]  DirecTV RC66RX Remote Control
     [129]* Eurochron temperature and humidity sensor
-    [130]  IKEA Sparsnäs Energy Meter Monitor
+    [130]  IKEA Sparsnas Energy Meter Monitor
     [131]  Microchip HCS200 KeeLoq Hopping Encoder based remotes
     [132]  TFA Dostmann 30.3196 T/H outdoor sensor
     [133]  Rubicson 48659 Thermometer
@@ -224,9 +232,48 @@ See [CONTRIBUTING.md](./docs/CONTRIBUTING.md).
     [146]  Auriol AFW2A1 temperature/humidity sensor
     [147]  TFA Drop Rain Gauge 30.3233.01
     [148]  DSC Security Contact (WS4945)
-    [149]  ERT SCM
-    [150]* Klimalogg/30.3180.IT (-f 868950000 -s 2400000)
-
+    [149]  ERT Standard Consumption Message (SCM)
+    [150]* Klimalogg
+    [151]  Visonic powercode
+    [152]  Eurochron EFTH-800 temperature and humidity sensor
+    [153]  Cotech 36-7959 wireless weather station with USB
+    [154]  Standard Consumption Message Plus (SCMplus)
+    [155]  Fine Offset Electronics WH1080/WH3080 Weather Station (FSK)
+    [156]  Abarth 124 Spider TPMS
+    [157]  Missil ML0757 weather station
+    [158]  Sharp SPC775 weather station
+    [159]  Insteon
+    [160]  ERT Interval Data Message (IDM)
+    [161]  ERT Interval Data Message (IDM) for Net Meters
+    [162]* ThermoPro-TX2 temperature sensor
+    [163]  Acurite 590TX Temperature with optional Humidity
+    [164]  Security+ 2.0 (Keyfob)
+    [165]  TFA Dostmann 30.3221.02 T/H Outdoor Sensor
+    [166]  LaCrosse Technology View LTV-WSDTH01 Breeze Pro Wind Sensor
+    [167]  Somfy RTS
+    [168]  Schrader TPMS SMD3MA4 (Subaru)
+    [169]* Nice Flor-s remote control for gates
+    [170]  LaCrosse Technology View LTV-WR1 Multi Sensor
+    [171]  LaCrosse Technology View LTV-TH Thermo/Hygro Sensor
+    [172]  Bresser Weather Center 6-in-1, 7-in-1 indoor, new 5-in-1, 3-in-1 wind gauge, Froggit WH6000, Ventus C8488A
+    [173]  Bresser Weather Center 7-in-1
+    [174]  EcoDHOME Smart Socket and MCEE Solar monitor
+    [175]  LaCrosse Technology View LTV-R1 Rainfall Gauge
+    [176]  BlueLine Power Monitor
+    [177]  Burnhard BBQ thermometer
+    [178]  Security+ (Keyfob)
+    [179]  Cavius smoke, heat and water detector
+    [180]  Jansite TPMS Model Solar
+    [181]  Amazon Basics Meat Thermometer
+    [182]  TFA Marbella Pool Thermometer
+    [183]  Auriol AHFL temperature/humidity sensor
+    [184]  Auriol AFT 77 B2 temperature sensor
+    [185]  Honeywell CM921 Wireless Programmable Room Thermostat
+    [186]  Hyundai TPMS (VDO)
+    [187]  RojaFlex shutter and remote devices
+    [188]  Marlec Solar iBoost+ sensors
+    [189]  Somfy io-homecontrol
+    [190]  Ambient Weather (Fine Offset) WH31L Lightning-Strike sensor
 
 * Disabled by default, use -R n or -G
 
@@ -330,7 +377,7 @@ E.g. -X "n=doorbell,m=OOK_PWM,s=400,l=800,r=7000,g=1000,match={24}0xa9878c,repea
 
 
 		= Meta information option =
-  [-M time[:<options>]|protocol|level|stats|bits|oldmodel] Add various metadata to every output line.
+  [-M time[:<options>]|protocol|level|noise[:<secs>]|stats|bits] Add various metadata to every output line.
 	Use "time" to add current date and time meta data (preset for live inputs).
 	Use "time:rel" to add sample position meta data (preset for read-file and stdin).
 	Use "time:unix" to show the seconds since unix epoch as time meta data.
@@ -343,10 +390,10 @@ E.g. -X "n=doorbell,m=OOK_PWM,s=400,l=800,r=7000,g=1000,match={24}0xa9878c,repea
 		"usec" and "utc" can be combined with other options, eg. "time:unix:utc:usec".
 	Use "protocol" / "noprotocol" to output the decoder protocol number meta data.
 	Use "level" to add Modulation, Frequency, RSSI, SNR, and Noise meta data.
+	Use "noise[:secs]" to report estimated noise level at intervals (default: 10 seconds).
 	Use "stats[:[<level>][:<interval>]]" to report statistics (default: 600 seconds).
 	  level 0: no report, 1: report successful devices, 2: report active devices, 3: report all
 	Use "bits" to add bit representation to code outputs (for debug).
-	Note: You can use "oldmodel" to get the old model keys. This will be removed shortly.
 
 
 		= Read file option =
@@ -378,7 +425,7 @@ E.g. -X "n=doorbell,m=OOK_PWM,s=400,l=800,r=7000,g=1000,match={24}0xa9878c,repea
 	Parameters are detected from the full path, file name, and extension.
 
 	File content and format are detected as parameters, possible options are:
-	'cu8', 'cs16', 'cf32' ('IQ' implied),
+	'cu8', 'cs8', 'cs16', 'cf32' ('IQ' implied),
 	'am.s16', 'am.f32', 'fm.s16', 'fm.f32',
 	'i.f32', 'q.f32', 'logic.u8', 'ook', and 'vcd'.
 

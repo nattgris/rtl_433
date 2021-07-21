@@ -18,15 +18,15 @@ Decoder for devices from the TBH project (https://www.projet-tbh.fr)
 There exist several device types (power, meteo, gaz,...)
 
 Payload format:
-- Synchro           {32} 0xaaaaaaaa
-- Preamble          {32} 0xd391d391
+- Preamble          {32} 0xaaaaaaaa
+- Syncword          {32} 0xd391d391
 - Length            {8}
 - Payload           {n}
 - Checksum          {16} CRC16 poly=0x8005 init=0xffff
 
 To get raw data:
 
-    ./rtl_433 -f 433901000 -X n=tbh,m=FSK_PCM,s=212,l=212,r=3000
+    ./rtl_433 -f 433901000 -X 'n=tbh,m=FSK_PCM,s=212,l=212,r=3000,preamble=aad391d391'
 
 The application data is obfuscated by doing data[n] xor data[n-1] xor info[n%16].
 
@@ -92,7 +92,7 @@ static int archos_tbh_decode(r_device *decoder, bitbuffer_t *bitbuffer)
         return DECODE_ABORT_LENGTH;
     }
 
-    uint8_t frame[62] = {0}; //TODO check max size, I have no idea, arbitrary limit of 60 bytes + 2 bytes crc
+    uint8_t frame[63] = {0}; // TODO check max size, I have no idea, arbitrary limit of 60 bytes + 2 bytes crc
     frame[0] = len;
     // Get frame (len don't include the length byte and the crc16 bytes)
     bitbuffer_extract_bytes(bitbuffer, row,
@@ -149,9 +149,9 @@ static int archos_tbh_decode(r_device *decoder, bitbuffer_t *bitbuffer)
             return DECODE_FAIL_MIC;
         }
 
-        uint32_t idx      = payload[6] << 16 | payload[7] << 8 | payload[8];
-        uint32_t ts       = payload[9] << 16 | payload[10] << 8 | payload[11];
-        uint32_t maxPower = payload[12] << 8 | payload[13];
+        int idx      = payload[6] << 16 | payload[7] << 8 | payload[8];
+        int ts       = payload[9] << 16 | payload[10] << 8 | payload[11];
+        int maxPower = payload[12] << 8 | payload[13];
 
         if (decoder->verbose > 1)
             fprintf(stderr, "%s: index: %d, timestamp: %d, maxPower: %d\n", __func__,
@@ -173,14 +173,14 @@ static int archos_tbh_decode(r_device *decoder, bitbuffer_t *bitbuffer)
     else if (type == 2) {
         // temp and humidity
         int temp_raw = (payload[6] << 8 | payload[5]) - 2732;
-        float temp_c = temp_raw * 0.1;
+        float temp_c = temp_raw * 0.1f;
         int humidity = payload[7];
 
         /* clang-format off */
         data = data_make(
                 "model",        "",                 DATA_STRING, "Archos-TBH",
                 "id",           "Station ID",       DATA_FORMAT, "%08X", DATA_INT, id,
-                "temperature_C", "Temperature",     DATA_FORMAT, "%.01f °C", DATA_DOUBLE, temp_c,
+                "temperature_C", "Temperature",     DATA_FORMAT, "%.01f C", DATA_DOUBLE, temp_c,
                 "humidity",     "Humidity",         DATA_FORMAT, "%d %%", DATA_INT, humidity,
                 "mic",          "Integrity",        DATA_STRING, "CRC",
                 NULL);

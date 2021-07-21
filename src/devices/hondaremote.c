@@ -1,16 +1,21 @@
-/* Honda Car Key
- *
- * Identifies button event, but does not attempt to decrypt rolling code...
- * Note that this is actually Manchester coded and should be changed.
- *
- * Copyright (C) 2016 Adrian Stevenson
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- */
+/** @file
+    Honda Car Key.
 
+    Copyright (C) 2016 Adrian Stevenson
+
+    This program is free software; you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation; either version 2 of the License, or
+    (at your option) any later version.
+*/
+
+/**
+Honda Car Key.
+
+Identifies button event, but does not attempt to decrypt rolling code...
+Note that this is actually Manchester coded and should be changed.
+
+*/
 #include "decoder.h"
 
 static char const *command_code[] = {"boot", "unlock" , "lock",};
@@ -42,11 +47,13 @@ static int hondaremote_callback(r_device *decoder, bitbuffer_t *bitbuffer)
         code = get_command_codes(b);
         device_id = b[44]<<8 | b[45];
 
+        /* clang-format off */
         data = data_make(
-                "model",        "",     DATA_STRING, _X("Honda-CarRemote","Honda Remote"),
-                _X("id","device id"),    "",    DATA_INT, device_id,
-                "code",         "",    DATA_STRING, code,
+                "model",        "",     DATA_STRING, "Honda-CarRemote",
+                "id",           "",     DATA_INT, device_id,
+                "code",         "",     DATA_STRING, code,
                 NULL);
+        /* clang-format on */
 
         decoder_output_data(decoder, data);
         return 1;
@@ -55,20 +62,19 @@ static int hondaremote_callback(r_device *decoder, bitbuffer_t *bitbuffer)
 }
 
 static char *output_fields[] = {
-    "model",
-    "device_id", // TODO: delete this
-    "id",
-    "code",
-    NULL
+        "model",
+        "id",
+        "code",
+        NULL,
 };
 
 r_device hondaremote = {
-    .name           = "Honda Car Key",
-    .modulation     = FSK_PULSE_PWM,
-    .short_width    = 250,
-    .long_width     = 500,
-    .reset_limit    = 2000,
-    .decode_fn      = &hondaremote_callback,
-    .disabled       = 1, // no MIC, weak sanity checks
-    .fields         = output_fields
+        .name        = "Honda Car Key",
+        .modulation  = FSK_PULSE_PWM,
+        .short_width = 250,
+        .long_width  = 500,
+        .reset_limit = 2000,
+        .decode_fn   = &hondaremote_callback,
+        .disabled    = 1, // no MIC, weak sanity checks
+        .fields      = output_fields,
 };

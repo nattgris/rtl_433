@@ -1,24 +1,29 @@
-/* Oil tank monitor using Si4320 framed FSK protocol
- *
- * Tested devices:
- * Sensor Systems Watchman Sonic
- *
- * Copyright (C) 2015 David Woodhouse
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- */
+/** @file
+    Oil tank monitor using Si4320 framed FSK protocol.
+
+    Copyright (C) 2015 David Woodhouse
+
+    This program is free software; you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation; either version 2 of the License, or
+    (at your option) any later version.
+*/
+/**
+Oil tank monitor using Si4320 framed FSK protocol.
+
+Tested devices:
+- Sensor Systems Watchman Sonic
+*/
 #include "decoder.h"
 
-// Start of frame preamble is 111000xx
-static const unsigned char preamble_pattern = 0xe0;
+static int oil_watchman_callback(r_device *decoder, bitbuffer_t *bitbuffer)
+{
+    // Start of frame preamble is 111000xx
+    uint8_t const preamble_pattern = 0xe0;
 
-// End of frame is 00xxxxxx or 11xxxxxx depending on final data bit
-static const unsigned char postamble_pattern[2] = { 0x00, 0xc0 };
+    // End of frame is 00xxxxxx or 11xxxxxx depending on final data bit
+    uint8_t const postamble_pattern[2] = { 0x00, 0xc0 };
 
-static int oil_watchman_callback(r_device *decoder, bitbuffer_t *bitbuffer) {
     uint8_t *b;
     uint32_t unit_id;
     uint16_t depth = 0;
@@ -78,13 +83,13 @@ static int oil_watchman_callback(r_device *decoder, bitbuffer_t *bitbuffer) {
 
         /* clang-format off */
         data = data_make(
-                "model", "", DATA_STRING, _X("Oil-SonicSmart","Oil Watchman"),
-                "id", "", DATA_FORMAT, "%06x", DATA_INT, unit_id,
-                "flags", "", DATA_FORMAT, "%02x", DATA_INT, flags,
-                "maybetemp", "", DATA_INT, maybetemp,
-                "temperature_C", "", DATA_DOUBLE, temperature,
-                "binding_countdown", "", DATA_INT, binding_countdown,
-                _X("depth_cm","depth"), "", DATA_INT, depth,
+                "model",                "", DATA_STRING, "Oil-SonicSmart",
+                "id",                   "", DATA_FORMAT, "%06x", DATA_INT, unit_id,
+                "flags",                "", DATA_FORMAT, "%02x", DATA_INT, flags,
+                "maybetemp",            "", DATA_INT,    maybetemp,
+                "temperature_C",        "", DATA_DOUBLE, temperature,
+                "binding_countdown",    "", DATA_INT,    binding_countdown,
+                "depth_cm",             "", DATA_INT,    depth,
                 NULL);
         /* clang-format on */
 
@@ -101,7 +106,6 @@ static char *output_fields[] = {
         "maybetemp",
         "temperature_C",
         "binding_countdown",
-        "depth", // TODO: remove this
         "depth_cm",
         NULL,
 };

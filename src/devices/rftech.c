@@ -1,18 +1,24 @@
-/* RF-tech decoder
- * Also marked INFRA 217S34
- * Ewig Industries Macao
- *
- * Copyright (C) 2016 Erik Johannessen
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- */
+/** @file
+    RF-tech decoder (INFRA 217S34).
+
+    Copyright (C) 2016 Erik Johannessen
+
+    This program is free software; you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation; either version 2 of the License, or
+    (at your option) any later version.
+*/
+/**
+RF-tech decoder (INFRA 217S34).
+
+Also marked INFRA 217S34
+Ewig Industries Macao
+*/
 
 #include "decoder.h"
 
-static int rftech_callback(r_device *decoder, bitbuffer_t *bitbuffer) {
+static int rftech_callback(r_device *decoder, bitbuffer_t *bitbuffer)
+{
     bitrow_t *bb = bitbuffer->bb;
     uint16_t sensor_id = 0;
     uint8_t button;
@@ -53,36 +59,37 @@ static int rftech_callback(r_device *decoder, bitbuffer_t *bitbuffer) {
     battery = (bb[r][2] & 0x80) == 0x80;
     button = (bb[r][2] & 0x60) != 0;
 
+    /* clang-format off */
     data = data_make(
-            "model", "", DATA_STRING, "RF-tech",
-            "id", "Id", DATA_INT, sensor_id,
-            "battery", "Battery", DATA_STRING, battery ? "OK" : "LOW",
-            "temperature_C", "Temperature", DATA_FORMAT, "%.01f C", DATA_DOUBLE, value,
-            "button", "Button", DATA_INT, button,
+            "model",            "",             DATA_STRING, "RF-tech",
+            "id",               "Id",           DATA_INT,    sensor_id,
+            "battery_ok",       "Battery",      DATA_INT,    battery,
+            "temperature_C",    "Temperature",  DATA_FORMAT, "%.01f C", DATA_DOUBLE, value,
+            "button",           "Button",       DATA_INT,    button,
             NULL);
+    /* clang-format on */
 
     decoder_output_data(decoder, data);
-
     return 1;
 }
 
 static char *csv_output_fields[] = {
-    "model",
-    "id",
-    "battery",
-    "temperature_C",
-    "button",
-    NULL,
+        "model",
+        "id",
+        "battery_ok",
+        "temperature_C",
+        "button",
+        NULL,
 };
 
 r_device rftech = {
-    .name       = "RF-tech",
-    .modulation = OOK_PULSE_PPM,
-    .short_width    = 2000,
-    .long_width     = 4000,
-    .gap_limit      = 5000,
-    .reset_limit    = 10000,
-    .decode_fn      = &rftech_callback,
-    .disabled   = 1,
-    .fields     = csv_output_fields,
+        .name        = "RF-tech",
+        .modulation  = OOK_PULSE_PPM,
+        .short_width = 2000,
+        .long_width  = 4000,
+        .gap_limit   = 5000,
+        .reset_limit = 10000,
+        .decode_fn   = &rftech_callback,
+        .disabled    = 1,
+        .fields      = csv_output_fields,
 };

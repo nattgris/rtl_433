@@ -53,7 +53,8 @@ static int honeywell_decode(r_device *decoder, bitbuffer_t *bitbuffer)
     int event;
     uint16_t crc_calculated;
     uint16_t crc;
-    int state;
+    int reed;
+    int contact;
     int heartbeat;
     int alarm;
     int tamper;
@@ -80,7 +81,7 @@ static int honeywell_decode(r_device *decoder, bitbuffer_t *bitbuffer)
 
     if (len > 50) { // DW11
         if (decoder->verbose)
-            bitrow_printf(b, len, "%s: ", __func__);
+            bitrow_printf(b, (len > 80 ? 80 : len), "%s: ", __func__);
     }
 
     if (channel == 0x2 || channel == 0x4 || channel == 0xA) {
@@ -93,25 +94,29 @@ static int honeywell_decode(r_device *decoder, bitbuffer_t *bitbuffer)
         return DECODE_FAIL_MIC; // Not a valid packet
 
     event = b[3];
-    // decoded event bits: AATABHUU
+    // decoded event bits: CTRABHUU
     // NOTE: not sure if these apply to all device types
-    state       = (event & 0x80) >> 7;
-    alarm       = (event & 0xb0) >> 4;
+    contact     = (event & 0x80) >> 7;
     tamper      = (event & 0x40) >> 6;
+    reed        = (event & 0x20) >> 5;
+    alarm       = (event & 0x10) >> 4;
     battery_low = (event & 0x08) >> 3;
     heartbeat   = (event & 0x04) >> 2;
 
     /* clang-format off */
     data = data_make(
-            "model",        "", DATA_STRING, _X("Honeywell-Security","Honeywell Door/Window Sensor"),
-            "id",           "", DATA_FORMAT, "%05x", DATA_INT, device_id,
-            "channel",      "", DATA_INT,    channel,
-            "event",        "", DATA_FORMAT, "%02x", DATA_INT, event,
-            "state",        "", DATA_STRING, state ? "open" : "closed",
-            "alarm",        "", DATA_INT,    alarm,
-            "tamper",       "", DATA_INT,    tamper,
-            "battery_ok",   "", DATA_INT,    !battery_low,
-            "heartbeat",    "", DATA_INT,    heartbeat,
+            "model",        "",         DATA_STRING, "Honeywell-Security",
+            "id",           "",         DATA_FORMAT, "%05x", DATA_INT, device_id,
+            "channel",      "",         DATA_INT,    channel,
+            "event",        "",         DATA_FORMAT, "%02x", DATA_INT, event,
+            "state",        "",         DATA_STRING, contact ? "open" : "closed", // Ignore the reed switch legacy.
+            "contact_open", "",         DATA_INT,    contact,
+            "reed_open",    "",         DATA_INT,    reed,
+            "alarm",        "",         DATA_INT,    alarm,
+            "tamper",       "",         DATA_INT,    tamper,
+            "battery_ok",   "Battery",  DATA_INT,    !battery_low,
+            "heartbeat",    "",         DATA_INT,    heartbeat,
+            "mic",          "Integrity",    DATA_STRING, "CRC",
             NULL);
     /* clang-format on */
 
@@ -125,10 +130,13 @@ static char *output_fields[] = {
         "channel",
         "event",
         "state",
+        "contact_open",
+        "reed_open",
         "alarm",
         "tamper",
         "battery_ok",
         "heartbeat",
+        "mic",
         NULL,
 };
 

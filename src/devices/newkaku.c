@@ -19,7 +19,8 @@ start pulse: 1T high, 10.44T low
 
 #include "decoder.h"
 
-static int newkaku_callback(r_device *decoder, bitbuffer_t *bitbuffer) {
+static int newkaku_callback(r_device *decoder, bitbuffer_t *bitbuffer)
+{
     data_t *data;
     bitrow_t *bb = bitbuffer->bb;
 
@@ -59,7 +60,7 @@ static int newkaku_callback(r_device *decoder, bitbuffer_t *bitbuffer) {
 
     /* clang-format off */
     data = data_make(
-            "model",        "",             DATA_STRING, _X("KlikAanKlikUit-Switch","KlikAanKlikUit Wireless Switch"),
+            "model",        "",             DATA_STRING, "KlikAanKlikUit-Switch",
             "id",           "",             DATA_INT,    id,
             "unit",         "Unit",         DATA_INT,    unit,
             "group_call",   "Group Call",   DATA_STRING, group_cmd ? "Yes" : "No",

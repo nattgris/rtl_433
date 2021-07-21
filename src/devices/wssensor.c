@@ -44,6 +44,15 @@ static int wssensor_decode(r_device *decoder, bitbuffer_t *bitbuffer)
 
     b = bitbuffer->bb[r];
 
+    // No need to decode/extract values for simple test
+    if ((!b[0] && !b[1] && !b[2])
+       || (b[0] == 0xff && b[1] == 0xff && b[2] == 0xff)) {
+        if (decoder->verbose > 1) {
+            fprintf(stderr, "%s: DECODE_FAIL_SANITY data all 0x00 or 0xFF\n", __func__);
+        }
+        return DECODE_FAIL_SANITY;
+    }
+
     int temperature;
     int battery_status;
     int startup;
@@ -75,10 +84,10 @@ static int wssensor_decode(r_device *decoder, bitbuffer_t *bitbuffer)
 
     /* clang-format off */
     data = data_make(
-            "model",         "",            DATA_STRING, _X("Hyundai-WS","WS Temperature Sensor"),
+            "model",         "",            DATA_STRING, "Hyundai-WS",
             "id",            "House Code",  DATA_INT, sensor_id,
             "channel",       "Channel",     DATA_INT, channel,
-            "battery",       "Battery",     DATA_STRING, battery_status ? "OK" : "LOW",
+            "battery_ok",    "Battery",     DATA_INT,    !!battery_status,
             "temperature_C", "Temperature", DATA_FORMAT, "%.02f C", DATA_DOUBLE, temperature_c,
             "button",           "Button",       DATA_INT, startup,
             NULL);
@@ -92,7 +101,7 @@ static char *output_fields[] = {
         "model",
         "id",
         "channel",
-        "battery",
+        "battery_ok",
         "temperature_C",
         "button",
         NULL,

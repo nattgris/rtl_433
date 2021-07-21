@@ -1,7 +1,6 @@
 # JSON Data fields
 
 See also the discussion and rationale in https://github.com/merbanan/rtl_433/pull/827
-Note that you can use `-M oldmodel` to still get the legacy names for a short while.
 
 ## Message Data
 These fields are the primary data fields containing the most basic message data and used to identify the specific device.
@@ -71,6 +70,9 @@ Examples:
 
 * **humidity** (double) (Optional)
   * Humidity from a hygrometer sensor in % relative humidity
+
+* **moisture** (double) (Optional)
+  * Moisture from a soil probe in % relative saturation
 
 * **wind_dir_deg** (double) (Optional)
   * Wind direction from wind sensor in compass direction degrees.

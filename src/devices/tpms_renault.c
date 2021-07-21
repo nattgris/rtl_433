@@ -29,7 +29,6 @@ Packet nibbles:
 static int tpms_renault_decode(r_device *decoder, bitbuffer_t *bitbuffer, unsigned row, unsigned bitpos)
 {
     data_t *data;
-    unsigned int start_pos;
     bitbuffer_t packet_bits = {0};
     uint8_t *b;
     int flags;
@@ -40,9 +39,9 @@ static int tpms_renault_decode(r_device *decoder, bitbuffer_t *bitbuffer, unsign
     double pressure_kpa;
     char code_str[5];
 
-    start_pos = bitbuffer_manchester_decode(bitbuffer, row, bitpos, &packet_bits, 160);
+    bitbuffer_manchester_decode(bitbuffer, row, bitpos, &packet_bits, 160);
     // require 72 data bits
-    if (start_pos-bitpos < 144) {
+    if (packet_bits.bits_per_row[0] < 72) {
         return 0;
     }
     b = packet_bits.bb[0];
@@ -64,22 +63,25 @@ static int tpms_renault_decode(r_device *decoder, bitbuffer_t *bitbuffer, unsign
     unknown      = b[7] << 8 | b[6]; // little-endian, fixed 0xffff?
     sprintf(code_str, "%04x", unknown);
 
+    /* clang-format off */
     data = data_make(
-            "model",            "", DATA_STRING, "Renault",
-            "type",             "", DATA_STRING, "TPMS",
-            "id",               "", DATA_STRING, id_str,
-            "flags",            "", DATA_STRING, flags_str,
-            "pressure_kPa",     "", DATA_FORMAT, "%.1f kPa", DATA_DOUBLE, (double)pressure_kpa,
-            "temperature_C",    "", DATA_FORMAT, "%.0f C", DATA_DOUBLE, (double)temp_c,
-            "mic",              "", DATA_STRING, "CRC",
+            "model",            "",             DATA_STRING, "Renault",
+            "type",             "",             DATA_STRING, "TPMS",
+            "id",               "",             DATA_STRING, id_str,
+            "flags",            "",             DATA_STRING, flags_str,
+            "pressure_kPa",     "",             DATA_FORMAT, "%.1f kPa", DATA_DOUBLE, (double)pressure_kpa,
+            "temperature_C",    "",             DATA_FORMAT, "%.0f C", DATA_DOUBLE, (double)temp_c,
+            "mic",              "Integrity",    DATA_STRING, "CRC",
             NULL);
+    /* clang-format on */
 
     decoder_output_data(decoder, data);
     return 1;
 }
 
 /** @sa tpms_renault_decode() */
-static int tpms_renault_callback(r_device *decoder, bitbuffer_t *bitbuffer) {
+static int tpms_renault_callback(r_device *decoder, bitbuffer_t *bitbuffer)
+{
     // full preamble is 55 55 55 56 (inverted: aa aa aa a9)
     uint8_t const preamble_pattern[2] = {0xaa, 0xa9}; // 16 bits
 

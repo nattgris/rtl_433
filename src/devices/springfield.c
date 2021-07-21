@@ -1,3 +1,11 @@
+/** @file
+    Springfield PreciseTemp Wireless Temperature and Soil Moisture Station.
+
+    This program is free software; you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation; either version 2 of the License, or
+    (at your option) any later version.
+*/
 /**
 Springfield PreciseTemp Wireless Temperature and Soil Moisture Station.
 
@@ -29,7 +37,8 @@ static int springfield_decode(r_device *decoder, bitbuffer_t *bitbuffer)
     uint8_t *b;
     int sid, battery, button, channel, temp;
     float temp_c;
-    int moisture, uk1;
+    int moisture;
+    // int uk1;
     data_t *data;
     unsigned tmpData;
     unsigned savData = 0;
@@ -54,21 +63,27 @@ static int springfield_decode(r_device *decoder, bitbuffer_t *bitbuffer)
         battery  = (b[1] >> 7) & 1;
         button   = (b[1] >> 6) & 1;
         channel  = ((b[1] >> 4) & 0x03) + 1;
-        temp     = (b[1] & 0x0f) << 8 | b[2];
-        temp     = (int16_t)(temp << 4) >> 4; // sign extend
-        temp_c   = temp * 0.1;
-        moisture = b[3] >> 4;
-        uk1      = b[4] >> 4; /* unknown. */
+        temp     = (int16_t)(((b[1] & 0x0f) << 12) | (b[2] << 4)); // uses sign extend
+        temp_c   = (temp >> 4) * 0.1f;
+        moisture = (b[3] >> 4) * 10; // Moisture level is 0-10
+        //uk1      = b[4] >> 4; /* unknown. */
+
+        // reduce false positives by checking specified sensor range, this isn't great...
+        if (temp_c < -30 || temp_c > 70) {
+            if (decoder->verbose > 1)
+                fprintf(stderr, "%s: temperature sanity check failed: %.1f C\n", __func__, temp_c);
+            return DECODE_FAIL_SANITY;
+        }
 
         /* clang-format off */
         data = data_make(
-                "model",            "",             DATA_STRING, _X("Springfield-Soil","Springfield Temperature & Moisture"),
-                _X("id","sid"),              "SID",          DATA_INT,    sid,
+                "model",            "",             DATA_STRING, "Springfield-Soil",
+                "id",               "SID",          DATA_INT,    sid,
                 "channel",          "Channel",      DATA_INT,    channel,
-                "battery",          "Battery",      DATA_STRING, battery ? "LOW" : "OK",
+                "battery_ok",       "Battery",      DATA_INT,    !battery,
                 "transmit",         "Transmit",     DATA_STRING, button ? "MANUAL" : "AUTO", // TODO: delete this
-                "temperature_C",    "Temperature",  DATA_FORMAT, "%.01f C", DATA_DOUBLE, temp_c,
-                "moisture",         "Moisture",     DATA_INT,    moisture,
+                "temperature_C",    "Temperature",  DATA_FORMAT, "%.1f C", DATA_DOUBLE, temp_c,
+                "moisture",         "Moisture",     DATA_FORMAT, "%d %%", DATA_INT, moisture,
                 "button",           "Button",       DATA_INT,    button,
 //                "uk1",            "uk1",          DATA_INT,    uk1,
                 "mic",              "Integrity",    DATA_STRING, "CHECKSUM",
@@ -83,14 +98,14 @@ static int springfield_decode(r_device *decoder, bitbuffer_t *bitbuffer)
 
 static char *output_fields[] = {
         "model",
-        "sid", // TODO: delete this
         "id",
         "channel",
-        "battery",
+        "battery_ok",
         "transmit", // TODO: delete this
         "temperature_C",
         "moisture",
         "button",
+        "mic",
         NULL,
 };
 

@@ -1,21 +1,23 @@
-/*
- * Brennenstuhl RCS 2044 remote control on 433.92MHz
- * likely x1527
- *
- * Copyright (C) 2015 Paul Ortyl
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 3 as
- * published by the Free Software Foundation.
- */
+/** @file
+    Brennenstuhl RCS 2044 remote control on 433.92MHz likely x1527.
+
+    Copyright (C) 2015 Paul Ortyl
+
+    This program is free software; you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation; either version 2 of the License, or
+    (at your option) any later version.
+*/
 
 /*
- * Receiver for the "RCS 2044 N Comfort Wireless Controller Set" sold under
- * the "Brennenstuhl" brand.
- *
- * The protocol is also implemented for raspi controlled transmitter on 433.92 MHz:
- * https://github.com/xkonni/raspberry-remote
- */
+Brennenstuhl RCS 2044 remote control on 433.92MHz likely x1527.
+
+Receiver for the "RCS 2044 N Comfort Wireless Controller Set" sold under
+the "Brennenstuhl" brand.
+
+The protocol is also implemented for raspi controlled transmitter on 433.92 MHz:
+https://github.com/xkonni/raspberry-remote
+*/
 
 #include "decoder.h"
 
@@ -88,7 +90,7 @@ static int brennenstuhl_rcs_2044_process_row(r_device *decoder, bitbuffer_t *bit
         return 0; /* Pressing simultaneously ON and OFF key is not useful either */
 
     data = data_make(
-            "model",    "Model",    DATA_STRING, _X("Brennenstuhl-RCS2044","Brennenstuhl RCS 2044"),
+            "model",    "Model",    DATA_STRING, "Brennenstuhl-RCS2044",
             "id",       "id",       DATA_INT, system_code,
             "key",      "key",      DATA_STRING, key,
             "state",    "state",    DATA_STRING, (on_off == 0x02 ? "ON" : "OFF"),
@@ -108,9 +110,10 @@ static int brennenstuhl_rcs_2044_callback(r_device *decoder, bitbuffer_t *bitbuf
 
 static char *output_fields[] = {
     "model",
-    "type",
+    "id",
+    "key",
     "state",
-    NULL
+    NULL,
 };
 
 r_device brennenstuhl_rcs_2044 = {

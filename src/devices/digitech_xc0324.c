@@ -64,13 +64,10 @@ running this decoder with debug level :
 
 #include "decoder.h"
 
-#define XC0324_DEVICE_BITLEN      148
+//#define XC0324_DEVICE_BITLEN      148
 #define XC0324_MESSAGE_BITLEN     48
 #define XC0324_MESSAGE_BYTELEN    (XC0324_MESSAGE_BITLEN + 7)/ 8
-#define XC0324_DEVICE_STARTBYTE   0x5F
-#define XC0324_DEVICE_MINREPEATS  3
-
-static const uint8_t preamble_pattern[1] = {XC0324_DEVICE_STARTBYTE};
+//#define XC0324_DEVICE_MINREPEATS  3
 
 static int decode_xc0324_message(r_device *decoder, bitbuffer_t *bitbuffer,
         unsigned row, uint16_t bitpos, const int latest_event, data_t **data)
@@ -98,7 +95,7 @@ static int decode_xc0324_message(r_device *decoder, bitbuffer_t *bitbuffer,
                     "chksum = 0x%02X not 0x00 <- XC0324:vv row %d bit %d",
                     chksum, row, bitpos);
         }
-        return 0; // No message was able to be decoded
+        return DECODE_FAIL_MIC; // No message was able to be decoded
     }
 
     // Extract the id as hex string
@@ -106,8 +103,8 @@ static int decode_xc0324_message(r_device *decoder, bitbuffer_t *bitbuffer,
 
     // Decode temperature (b[2]), plus 1st 4 bits b[3], LSB first order!
     // Tenths of degrees C, offset from the minimum possible (-40.0 degrees)
-    uint16_t temp = ((uint16_t)(reverse8(b[3]) & 0x0f) << 8) | reverse8(b[2]);
-    temperature   = (temp / 10.0) - 40.0;
+    int temp = ((uint16_t)(reverse8(b[3]) & 0x0f) << 8) | reverse8(b[2]);
+    temperature   = (temp - 400) * 0.1f;
 
     //Unknown byte, constant as 0x80 in all my data
     // ??maybe battery status??
@@ -118,7 +115,7 @@ static int decode_xc0324_message(r_device *decoder, bitbuffer_t *bitbuffer,
     // from (simulated) deciphering stage output (decoder->verbose > 0)
     if (!decoder->verbose) { // production output
         *data = data_make(
-                "model",            "Device Type",      DATA_STRING, _X("Digitech-XC0324","Digitech XC0324"),
+                "model",            "Device Type",      DATA_STRING, "Digitech-XC0324",
                 "id",               "ID",               DATA_STRING, id,
                 "temperature_C",    "Temperature C",    DATA_FORMAT, "%.1f", DATA_DOUBLE, temperature,
                 "flags",            "Constant ?",       DATA_INT,    flags,
@@ -150,11 +147,17 @@ static char *output_fields[] = {
     "flags",
     "mic",
     "message_num",
-    NULL
+    NULL,
 };
 
+/**
+Digitech XC-0324 device.
+@sa decode_xc0324_message()
+*/
 static int xc0324_callback(r_device *decoder, bitbuffer_t *bitbuffer)
 {
+    uint8_t const preamble_pattern[] = {0x5F};
+
     int r; // a row index
     uint16_t bitpos;
     int ret      = 0;

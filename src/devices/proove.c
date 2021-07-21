@@ -47,7 +47,8 @@ Packet gap is 10 ms.
 
 #include "decoder.h"
 
-static int proove_callback(r_device *decoder, bitbuffer_t *bitbuffer) {
+static int proove_callback(r_device *decoder, bitbuffer_t *bitbuffer)
+{
     data_t *data;
 
     /* Reject missing sync */
@@ -60,12 +61,14 @@ static int proove_callback(r_device *decoder, bitbuffer_t *bitbuffer) {
 
     bitbuffer_t databits = {0};
     // note: not manchester encoded but actually ternary
-    unsigned pos = bitbuffer_manchester_decode(bitbuffer, 0, 0, &databits, 80);
-    bitbuffer_invert(&databits);
+    bitbuffer_manchester_decode(bitbuffer, 0, 0, &databits, 80);
 
     /* Reject codes when Manchester decoding fails */
-    if (pos != 64)
+    /* 32 bits or 36 bits with dimmer value */
+    if (databits.bits_per_row[0] < 32)
         return DECODE_ABORT_LENGTH;
+
+    bitbuffer_invert(&databits);
 
     uint8_t *b = databits.bb[0];
 
@@ -77,7 +80,7 @@ static int proove_callback(r_device *decoder, bitbuffer_t *bitbuffer) {
 
     /* clang-format off */
     data = data_make(
-            "model",         "",            DATA_STRING, _X("Proove-Security","Proove"),
+            "model",         "",            DATA_STRING, "Proove-Security",
             "id",            "House Code",  DATA_INT,    id,
             "channel",       "Channel",     DATA_INT,    channel,
             "state",         "State",       DATA_STRING, on_bit ? "ON" : "OFF",

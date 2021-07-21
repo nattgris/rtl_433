@@ -1,3 +1,13 @@
+/** @file
+    ELV WS 2000.
+
+    This program is free software; you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation; either version 2 of the License, or
+    (at your option) any later version.
+*/
+
+
 #include "decoder.h"
 
 static uint16_t AD_POP(uint8_t *bb, uint8_t bits, uint8_t bit)
@@ -21,7 +31,7 @@ static int em1000_callback(r_device *decoder, bitbuffer_t *bitbuffer)
     uint8_t bytes=0;
     uint8_t bit=18; // preamble
     uint8_t bb_p[14];
-    char* types[] = {"EM 1000-S", "EM 1000-?", "EM 1000-GZ"};
+    //char* types[] = {"EM 1000-S", "EM 1000-?", "EM 1000-GZ"};
     uint8_t checksum_calculated = 0;
     uint8_t i;
     uint8_t stopbit;
@@ -58,10 +68,10 @@ static int em1000_callback(r_device *decoder, bitbuffer_t *bitbuffer)
         return DECODE_FAIL_MIC;
     }
 
-//for (i = 0; i < bytes; i++) fprintf(stderr, "%02X ", dec[i]); fprintf(stderr, "\n");
+//    bitrow_print(dec, bytes * 8);
 
     // based on 15_CUL_EM.pm
-    char *subtype = dec[0] >= 1 && dec[0] <= 3 ? types[dec[0] - 1] : "?";
+    //char *subtype = dec[0] >= 1 && dec[0] <= 3 ? types[dec[0] - 1] : "?";
     int code      = dec[1];
     int seqno     = dec[2];
     int total     = dec[3] | dec[4] << 8;
@@ -165,8 +175,8 @@ static int ws2000_callback(r_device *decoder, bitbuffer_t *bitbuffer)
 
     char *subtype  = (dec[0] <= 7) ? types[dec[0]] : "?";
     int code       = dec[1] & 7;
-    float temp     = ((dec[1] & 8) ? -1.0 : 1.0) * (dec[4] * 10 + dec[3] + dec[2] * 0.1);
-    float humidity = dec[7] * 10 + dec[6] + dec[5] * 0.1;
+    float temp     = ((dec[1] & 8) ? -1.0f : 1.0f) * (dec[4] * 10 + dec[3] + dec[2] * 0.1f);
+    float humidity = dec[7] * 10 + dec[6] + dec[5] * 0.1f;
     int pressure   = 0;
     if (dec[0]==4) {
         pressure = 200 + dec[10] * 100 + dec[9] * 10 + dec[8];
